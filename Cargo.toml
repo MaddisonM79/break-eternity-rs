@@ -2,7 +2,7 @@
 name = "break-eternity"
 version = "0.2.0"
 edition = "2018"
-license-file = "LICENSE"
+license = "MIT"
 description = "A numerical library to represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308)."
 authors = ["cozyGalvinism <jean@der-capta.in>"]
 repository = "https://github.com/cozyGalvinism/break-eternity"
