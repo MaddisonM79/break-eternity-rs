@@ -1,24 +1,24 @@
 [package]
 name = "break-eternity"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2018"
 license-file = "LICENSE"
 description = "A numerical library to represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308)."
-authors = ["cozyGalvinism <reallifejunkies@googlemail.com>"]
+authors = ["cozyGalvinism <jean@der-capta.in>"]
 repository = "https://github.com/cozyGalvinism/break-eternity"
 keywords = ["big", "decimal", "bigdecimal", "incremental", "games"]
 categories = ["game-development", "mathematics"]
 readme = "README.md"
-exclude = [".gitignore"]
+exclude = [".gitignore", ".vscode", ".github"]
 
 [dependencies]
-custom_error = "1.9.2"
+custom_error = "1.9"
 lazy_static = "1.4.0"
-num-derive = "0.3.3"
-num-traits = "0.2.14"
-pad = "0.1.6"
+num-derive = "0.4"
+num-traits = "0.2"
+pad = "0.1"
 serde_crate = { package = "serde", version = "1.0.130", optional = true }
-gdnative = { version = "0.9.3", optional = true }
+gdnative = { version = "0.11", optional = true }
 
 [features]
 default = []

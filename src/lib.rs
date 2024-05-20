@@ -20,17 +20,14 @@ use std::{
     convert::{TryFrom, TryInto},
     fmt::{Display, LowerExp, UpperExp},
     num::ParseFloatError,
-    ops::{Add, Div, Mul, Neg, Rem, Sub, AddAssign, SubAssign, DivAssign, MulAssign, RemAssign},
+    ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign},
 };
-
-#[cfg(test)]
-mod tests;
 
 custom_error! {
     /// Error type for all errors in this crate.
     pub BreakEternityError
         /// An error that occurs when f_gamma and lambertw fails to converge a number (more than 100 iterations)
-        IterationFailedConvering {
+        IterationFailedConverging {
             /// The number that failed to converge
             z: f64
         } = "Iteration failed to converge: {z}",
@@ -74,7 +71,7 @@ pub const MAX_ES_IN_A_ROW: u64 = 5;
 /// Maximum number powers of 10 that will be cached.
 pub const MAX_POWERS_OF_TEN: usize = (NUMBER_EXP_MAX - NUMBER_EXP_MIN + 1) as usize;
 /// 2*PI
-pub const TWO_PI: f64 = 6.283185307179586;
+pub const TWO_PI: f64 = std::f64::consts::TAU;
 /// exp(-1)
 pub const EXPN1: f64 = 0.36787944117144233;
 /// W(1, 0)
@@ -219,7 +216,7 @@ fn f_lambertw(z: Number, mut tol: Option<Number>) -> Result<Number, BreakEternit
         }
     }
 
-    Err(BreakEternityError::IterationFailedConvering { z })
+    Err(BreakEternityError::IterationFailedConverging { z })
 }
 
 fn d_lambertw(z: Decimal, mut tol: Option<Number>) -> Result<Decimal, BreakEternityError> {
@@ -262,12 +259,15 @@ fn d_lambertw(z: Decimal, mut tol: Option<Number>) -> Result<Decimal, BreakEtern
         }
     }
 
-    Err(BreakEternityError::IterationFailedConvering { z: z.to_number() })
+    Err(BreakEternityError::IterationFailedConverging { z: z.to_number() })
 }
 
 /// A Decimal number that can represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308).
 #[derive(Clone, Copy, Debug, Default)]
-#[cfg_attr(feature = "godot", derive(gdnative::FromVariant, gdnative::ToVariant))]
+#[cfg_attr(
+    feature = "godot",
+    derive(gdnative::prelude::FromVariant, gdnative::prelude::ToVariant)
+)]
 pub struct Decimal {
     /// Sign of the Decimal. 1 for positive, -1 for negative.
     pub sign: i8,
@@ -278,8 +278,15 @@ pub struct Decimal {
 }
 
 impl Decimal {
+    /// Creates a new Decimal
+    ///
+    /// This does not normalize the Decimal, use [Decimal::from_components] for automatic normalization.
+    pub fn new(sign: i8, layer: i64, mag: Number) -> Decimal {
+        Decimal { sign, layer, mag }
+    }
+
     /// Returns the mantissa of the Decimal
-    pub fn m(&self) -> Number {
+    pub fn mantissa(&self) -> Number {
         if self.sign == 0 {
             return 0.0;
         }
@@ -305,7 +312,7 @@ impl Decimal {
     }
 
     /// Sets the mantissa of the Decimal
-    pub fn set_m(&mut self, m: Number) {
+    pub fn set_mantissa(&mut self, m: Number) {
         if self.layer <= 2 {
             self.set_from_mantissa_exponent(m, self.layer as f64);
         } else {
@@ -313,13 +320,13 @@ impl Decimal {
             self.sign = sign(m);
             if self.sign == 0 {
                 self.layer = 0;
-                self.set_e(0.0);
+                self.set_exponent(0.0);
             }
         }
     }
 
     /// Returns the exponent of the Decimal
-    pub fn e(&self) -> Number {
+    pub fn exponent(&self) -> Number {
         if self.sign == 0 {
             return 0.0;
         }
@@ -340,17 +347,17 @@ impl Decimal {
     }
 
     /// Sets the exponent of the Decimal
-    pub fn set_e(&mut self, e: Number) {
-        self.set_from_mantissa_exponent(self.m(), e);
+    pub fn set_exponent(&mut self, e: Number) {
+        self.set_from_mantissa_exponent(self.mantissa(), e);
     }
 
     /// Returns the sign of the Decimal
-    pub fn s(&self) -> i8 {
+    pub fn sign(&self) -> i8 {
         self.sign
     }
 
     /// Sets the sign of the Decimal
-    pub fn set_s(&mut self, s: i8) {
+    pub fn set_sign(&mut self, s: i8) {
         if s == 0 {
             self.sign = 0;
             self.layer = 0;
@@ -360,24 +367,24 @@ impl Decimal {
         }
     }
 
-    /// Returns the mantissa of the Decimal
-    pub fn mantissa(&self) -> Number {
-        self.m()
+    /// Returns the layer of the Decimal
+    pub fn layer(&self) -> i64 {
+        self.layer
     }
 
-    /// Sets the mantissa of the Decimal
-    pub fn set_mantissa(&mut self, m: Number) {
-        self.set_m(m);
+    /// Sets the layer of the Decimal
+    pub fn set_layer(&mut self, l: i64) {
+        self.layer = l;
     }
 
-    /// Returns the exponent of the Decimal
-    pub fn exponent(&self) -> Number {
-        self.e()
+    /// Returns the magnitude of the Decimal
+    pub fn mag(&self) -> Number {
+        self.mag
     }
 
-    /// Sets the exponent of the Decimal
-    pub fn set_exponent(&mut self, e: Number) {
-        self.set_e(e);
+    /// Sets the magnitude of the Decimal
+    pub fn set_mag(&mut self, m: Number) {
+        self.mag = m;
     }
 
     /// Creates a Decimal from a sign, a layer and a magnitude
@@ -432,24 +439,12 @@ impl Decimal {
     /// * If layer === 0 and mag < FIRST_NEG_LAYER (1/9e15), shift to 'first negative layer' (add layer, log10 mag).
     /// * While abs(mag) > EXP_LIMIT (9e15), layer += 1, mag = maglog10(mag).
     /// * While abs(mag) < LAYER_DOWN (15.954) and layer > 0, layer -= 1, mag = pow(10, mag).
-    /// * When we're done, all of the following should be true OR one of the numbers is not IsFinite OR layer is not IsInteger (error state):
+    /// * When we're done, all of the following should be true OR one of the numbers is not finite OR layer is not an integer (error state):
     ///     * Any 0 is totally zero (0, 0, 0).
     ///     * Anything layer 0 has mag 0 OR mag > 1/9e15 and < 9e15.
     ///     * Anything layer 1 or higher has abs(mag) >= 15.954 and < 9e15.
     /// * We will assume in calculations that all Decimals are either erroneous or satisfy these criteria. (Otherwise: Garbage in, garbage out.)
     pub fn normalize(&mut self) -> Decimal {
-        // PSEUDOCODE:
-        // Whenever we are partially 0 (sign is 0 or mag and layer is 0), make it fully 0.
-        // Whenever we are at or hit layer 0, extract sign from negative mag.
-        // If layer === 0 and mag < FIRST_NEG_LAYER (1/9e15), shift to 'first negative layer' (add layer, log10 mag).
-        // While abs(mag) > EXP_LIMIT (9e15), layer += 1, mag = maglog10(mag).
-        // While abs(mag) < LAYER_DOWN (15.954) and layer > 0, layer -= 1, mag = pow(10, mag).
-        // When we're done, all of the following should be true OR one of the numbers is not IsFinite OR layer is not IsInteger (error state):
-        // Any 0 is totally zero (0, 0, 0).
-        // Anything layer 0 has mag 0 OR mag > 1/9e15 and < 9e15.
-        // Anything layer 1 or higher has abs(mag) >= 15.954 and < 9e15.
-        // We will assume in calculations that all Decimals are either erroneous or satisfy these criteria. (Otherwise: Garbage in, garbage out.)
-
         if self.sign == 0 || (self.mag == 0.0 && self.layer == 0) {
             self.sign = 0;
             self.layer = 0;
@@ -582,15 +577,15 @@ impl Decimal {
 
     /// Returns the mantissa with the specified amount of decimal places
     pub fn mantissa_with_decimal_places(&self, places: i32) -> Number {
-        if self.m().is_nan() {
+        if self.mantissa().is_nan() {
             return f64::NAN;
         }
 
-        if self.m() == 0.0 {
+        if self.mantissa() == 0.0 {
             return 0.0;
         }
 
-        decimal_places(self.m(), places)
+        decimal_places(self.mantissa(), places)
     }
 
     /// Returns the magnitude with the specified amount of decimal places
@@ -621,11 +616,11 @@ impl Decimal {
     ///
     /// Otherwise, this will return a scientific representation of the number.
     pub fn to_precision(&self, places: usize) -> String {
-        if self.e() <= -7.0 {
+        if self.exponent() <= -7.0 {
             return format!("{:.*e}", places - 1, self);
         }
 
-        if places as f64 > self.e() {
+        if places as f64 > self.exponent() {
             return self.to_fixed(places - self.exponent() as usize - 1);
         }
 
@@ -653,10 +648,10 @@ impl Decimal {
             return format!(
                 "{:.*}{}{:.*}",
                 places,
-                decimal_places(self.m(), places as i32),
+                decimal_places(self.mantissa(), places as i32),
                 e,
                 places,
-                decimal_places(self.e(), places as i32)
+                decimal_places(self.exponent(), places as i32)
             );
         }
 
@@ -664,30 +659,30 @@ impl Decimal {
             return format!(
                 "{:.*}{}{:.*}",
                 places,
-                decimal_places(self.m(), places as i32),
+                decimal_places(self.mantissa(), places as i32),
                 e,
                 places,
-                decimal_places(self.e(), places as i32)
+                decimal_places(self.exponent(), places as i32)
             );
         }
 
         if self.layer <= MAX_ES_IN_A_ROW as i64 {
-            return format!(
+            format!(
                 "{}{}{:.*}",
                 if self.sign > 0 { "" } else { "-" },
                 e.repeat(self.layer as usize),
                 places,
                 decimal_places(self.mag, places as i32)
-            );
+            )
         } else {
-            return format!(
+            format!(
                 "{}({}^{}){:.*}",
                 if self.sign > 0 { "" } else { "-" },
                 e,
                 self.layer,
                 places,
                 decimal_places(self.mag, places as i32)
-            );
+            )
         }
     }
 
@@ -805,15 +800,11 @@ impl Decimal {
     /// Compares the absolute value of the Decimal to the absolute value of the other Decimal
     pub fn cmpabs(&self, rhs: &Decimal) -> i8 {
         let layer_a = if self.mag > 0.0 {
-            self.layer as i64
+            self.layer
         } else {
-            -(self.layer as i64)
+            -self.layer
         };
-        let layer_b = if rhs.mag > 0.0 {
-            rhs.layer as i64
-        } else {
-            -(rhs.layer as i64)
-        };
+        let layer_b = if rhs.mag > 0.0 { rhs.layer } else { -rhs.layer };
 
         if layer_a > layer_b {
             return 1;
@@ -1694,24 +1685,8 @@ impl PartialEq for Decimal {
 impl Eq for Decimal {}
 
 impl PartialOrd for Decimal {
-    #[allow(clippy::comparison_chain)]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        if self.sign > other.sign {
-            return Some(std::cmp::Ordering::Greater);
-        }
-
-        if self.sign < other.sign {
-            return Some(std::cmp::Ordering::Less);
-        }
-
-        let cmp_abs = self.cmpabs(other) * self.sign;
-        if cmp_abs > 0 {
-            Some(std::cmp::Ordering::Greater)
-        } else if cmp_abs < 0 {
-            Some(std::cmp::Ordering::Less)
-        } else {
-            Some(std::cmp::Ordering::Equal)
-        }
+        Some(self.cmp(other))
     }
 }
 
@@ -1734,6 +1709,14 @@ impl Ord for Decimal {
         } else {
             std::cmp::Ordering::Equal
         }
+    }
+}
+
+impl std::hash::Hash for Decimal {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.sign.hash(state);
+        self.layer.hash(state);
+        self.mag.to_bits().hash(state);
     }
 }
 
@@ -1850,9 +1833,7 @@ impl Mul<Decimal> for Decimal {
         }
 
         if a.layer == 0 && b.layer == 0 {
-            return Decimal::from_number(
-                a.sign as f64 * b.sign as f64 * a.mag as f64 * b.mag as f64,
-            );
+            return Decimal::from_number(a.sign as f64 * b.sign as f64 * a.mag * b.mag);
         }
 
         if a.layer >= 3 || (a.layer - b.layer >= 2) {
@@ -1984,7 +1965,6 @@ mod serde {
     }
 }
 
-
 impl LowerExp for Decimal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if *self == Decimal::inf() {
@@ -2057,10 +2037,10 @@ impl Display for Decimal {
             if (self.mag < 1e21 && self.mag > 1e-7) || self.mag == 0.0 {
                 return write!(f, "{}", self.sign as f64 * self.mag);
             }
-            return write!(f, "{}e{}", self.m(), self.e());
+            return write!(f, "{}e{}", self.mantissa(), self.exponent());
         }
         if self.layer == 1 {
-            return write!(f, "{}e{}", self.m(), self.e());
+            return write!(f, "{}e{}", self.mantissa(), self.exponent());
         }
         if self.layer <= MAX_ES_IN_A_ROW as i64 {
             return write!(
@@ -2101,11 +2081,27 @@ macro_rules! impl_ops_primitive {
             }
         }
 
+        impl Add<Decimal> for $prim_type {
+            type Output = Decimal;
+
+            fn add(self, rhs: Decimal) -> Self::Output {
+                Decimal::from_number(self as f64) + rhs
+            }
+        }
+
         impl Sub<$prim_type> for Decimal {
             type Output = Decimal;
 
             fn sub(self, rhs: $prim_type) -> Self::Output {
                 self - Decimal::from_number(rhs as f64)
+            }
+        }
+
+        impl Sub<Decimal> for $prim_type {
+            type Output = Decimal;
+
+            fn sub(self, rhs: Decimal) -> Self::Output {
+                Decimal::from_number(self as f64) - rhs
             }
         }
 
@@ -2117,6 +2113,14 @@ macro_rules! impl_ops_primitive {
             }
         }
 
+        impl Mul<Decimal> for $prim_type {
+            type Output = Decimal;
+
+            fn mul(self, rhs: Decimal) -> Self::Output {
+                Decimal::from_number(self as f64) * rhs
+            }
+        }
+
         impl Div<$prim_type> for Decimal {
             type Output = Decimal;
 
@@ -2125,11 +2129,27 @@ macro_rules! impl_ops_primitive {
             }
         }
 
+        impl Div<Decimal> for $prim_type {
+            type Output = Decimal;
+
+            fn div(self, rhs: Decimal) -> Self::Output {
+                Decimal::from_number(self as f64) / rhs
+            }
+        }
+
         impl Rem<$prim_type> for Decimal {
             type Output = Decimal;
 
             fn rem(self, rhs: $prim_type) -> Self::Output {
                 self % Decimal::from_number(rhs as f64)
+            }
+        }
+
+        impl Rem<Decimal> for $prim_type {
+            type Output = Decimal;
+
+            fn rem(self, rhs: Decimal) -> Self::Output {
+                Decimal::from_number(self as f64) % rhs
             }
         }
 
@@ -2193,9 +2213,9 @@ impl TryFrom<&str> for Decimal {
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         let mut value = s.to_string();
         if *IGNORE_COMMAS {
-            value = value.replace(",", "");
+            value = value.replace(',', "");
         } else if *COMMAS_ARE_DECIMAL_POINTS {
-            value = value.replace(",", ".");
+            value = value.replace(',', ".");
         }
         let value = value.as_str();
 
@@ -2316,7 +2336,7 @@ impl TryFrom<&str> for Decimal {
                 });
             }
             let height = height.unwrap();
-            let tmp = pt_parts[1].replace("(", "").replace(")", "");
+            let tmp = pt_parts[1].replace(['(', ')'], "");
             pt_parts[1] = tmp.as_str();
 
             let payload = pt_parts[1].parse::<Number>();
@@ -2348,7 +2368,7 @@ impl TryFrom<&str> for Decimal {
                 });
             }
             let height = height.unwrap();
-            let tmp = p_parts[1].replace("(", "").replace(")", "");
+            let tmp = p_parts[1].replace(['(', ')'], "");
             p_parts[1] = tmp.as_str();
 
             let payload = p_parts[1].parse::<Number>();
