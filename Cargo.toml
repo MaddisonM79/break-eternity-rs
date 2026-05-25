@@ -1,15 +1,19 @@
 [package]
-name = "break-eternity"
-version = "0.2.0"
+name = "break-eternity-rs"
+version = "0.1.0"
 edition = "2018"
 license = "MIT"
-description = "A numerical library to represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308)."
-authors = ["cozyGalvinism <jean@der-capta.in>"]
-repository = "https://github.com/cozyGalvinism/break-eternity"
+description = "Fork of break-eternity: a numerical library to represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308)."
+authors = ["Maddison Markham <nerdy.maddison@gmail.com>", "cozyGalvinism <jean@der-capta.in>"]
+repository = "https://github.com/MaddisonM79/break-eternity-rust"
+homepage = "https://github.com/MaddisonM79/break-eternity-rust"
 keywords = ["big", "decimal", "bigdecimal", "incremental", "games"]
 categories = ["game-development", "mathematics"]
 readme = "README.md"
 exclude = [".gitignore", ".vscode", ".github"]
+
+[lib]
+name = "break_eternity"
 
 [dependencies]
 custom_error = "1.9"

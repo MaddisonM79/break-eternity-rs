@@ -1,8 +1,8 @@
-# break-eternity
+# break-eternity-rs
 
-![https://crates.io/crates/break-eternity](https://img.shields.io/crates/v/break-eternity.svg)
+![https://crates.io/crates/break-eternity-rs](https://img.shields.io/crates/v/break-eternity-rs.svg)
 
-A port of [Patashu's break_eternity.js](https://github.com/Patashu/break_eternity.js).
+A fork of [cozyGalvinism's break-eternity](https://github.com/cozyGalvinism/break-eternity), itself a port of [Patashu's break_eternity.js](https://github.com/Patashu/break_eternity.js).
 
 A numerical library to represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308).
 
