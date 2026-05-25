@@ -61,13 +61,13 @@ jobs:
       - run: cargo build --no-default-features
 
   msrv:
-    name: MSRV (1.85)
+    name: MSRV (1.94)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # master
         with:
-          toolchain: "1.85"
+          toolchain: "1.94"
       - uses: Swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
       # MSRV is dictated by the optional godot 0.5 (gdext) dep, which
       # cargo resolves even when the godot4 feature is off.
