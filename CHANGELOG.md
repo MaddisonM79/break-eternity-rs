@@ -9,14 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- Godot 4 support via `gdext`; existing `godot` feature deprecated in favor of `godot4`.
-- WASM build target via a new `wasm` feature.
 - Expanded test suite: `proptest` property tests, JS-parity fixture tests.
 
 ## [0.2.0-rc.1] - Unreleased
 
 ### Breaking
 
+- The `godot` Cargo feature is replaced by two explicit alternatives: `godot3` (transitional, on gdnative 0.11; will be removed in 0.3.0) and `godot4` (active, on gdext 0.5). Users were previously on `godot` via `features = ["godot"]`; migrate to `features = ["godot3"]` if you're on Godot 3, or `features = ["godot4"]` if you're on Godot 4. The transitional `godot3` feature exists only to give downstream code one release cycle to migrate.
 - `Decimal` fields `sign`, `layer`, and `mag` are now `pub(crate)`. External code must use the public accessor methods (`sign()`, `layer()`, `mag()`) instead of direct field access or struct-literal construction.
 - `set_sign`, `set_layer`, `set_mag` removed from the public API. These methods allowed callers to bypass normalization and violate the struct invariant.
 - `from_components_no_normalize` renamed to `from_components_unchecked` and made `pub(crate)`. It was never safe to call from outside the crate.
@@ -35,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `wasm` feature — exposes `Decimal` to JavaScript via `wasm-bindgen` as a `JsDecimal` class with string-based constructor, arithmetic, and comparison methods.
+- `godot4` feature — `GodotConvert`/`FromGodot`/`ToGodot` implementations for the [`godot`](https://crates.io/crates/godot) crate (gdext, Godot 4). `Decimal` round-trips through `GString` via `Display`/`TryFrom<&str>`.
+- `godot3` feature — **deprecated** — `FromVariant`/`ToVariant` implementations for [`gdnative`](https://crates.io/crates/gdnative) (Godot 3). Will be removed in 0.3.0.
 - `Decimal::from_finite(x: f64) -> Decimal` — infallible constructor; debug-asserts finiteness.
 - `TryFrom<f64>` and `TryFrom<f32>` for `Decimal` — explicit fallible conversion, returns `Err(ArithmeticError { kind: Undefined })` for NaN/infinite inputs.
 - `Decimal::approx_eq(&self, other: &Self, tolerance: f64) -> bool` — tolerance-based equality (the semantics of the old `PartialEq`).
@@ -69,36 +71,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Hash` contract: derived `Hash` previously did not match the approximate `PartialEq`. Now both use `mag.to_bits()`.
 - `set_from_mantissa_exponent_no_normalize` previously normalized despite its name — the behavior is now documented and the method is `pub(crate)`.
 - `mantissa_with_decimal_places` and `magnitude_with_decimal_places` removed NaN sentinel checks (no publicly-reachable NaN Decimals after Phase 4).
-
-## [0.1.1] - Unreleased
-
-### Fixed
-
 - `repository` and `homepage` in `Cargo.toml` pointed to a non-existent GitHub repo (`break-eternity-rust`); now correctly resolve to `break-eternity-rs`.
 - Malformed crates.io badge in `README.md` is now a clickable link with proper alt text.
 
-### Changed
+### Project hygiene
 
 - Edition bump to 2021, MSRV declared as `rust-version = "1.70"`.
 - Dependency modernization: `lazy_static` → `std::sync::OnceLock`, `custom_error` → `thiserror`, removed unused `num-derive` / `num-traits` / `pad`.
 - `authors` field in `Cargo.toml` reduced to GitHub handles only — no personal names or email addresses.
 - `categories` updated from `"mathematics"` to the canonical `"science::mathematics"` crates.io slug.
-- `src/lib.rs` split into focused submodules: `arithmetic`, `constants`, `decimal`, `error`, `format`, `parse`, `serde_impl`, `tetration`, `transcendental`, `utils`.
-
-### Added
-
-- `documentation` field in `Cargo.toml` linking to docs.rs.
-- `[package.metadata.docs.rs]` block enabling all-features docs builds.
+- `src/lib.rs` (~2,530 LOC) split into focused submodules: `arithmetic`, `constants`, `decimal`, `error`, `format`, `parse`, `serde_impl`, `tetration`, `transcendental`, `utils`.
+- `documentation` field in `Cargo.toml` linking to docs.rs and a `[package.metadata.docs.rs]` block.
 - `docs.rs` and MIT license badges in `README.md`.
 - `## Installation` section in `README.md`.
-- `CHANGELOG.md` (this file).
-- `SECURITY.md` with vulnerability reporting policy.
-- `CONTRIBUTING.md` with branch model and PR workflow.
+- `CHANGELOG.md` (this file), `SECURITY.md`, `CONTRIBUTING.md`.
 - `.github/workflows/ci.yml` — fmt, clippy, test (stable + beta × Linux/macOS/Windows), MSRV check, wasm32 build.
 - `.github/workflows/audit.yml` — daily `cargo audit`.
 - `.github/dependabot.yml` — weekly cargo + github-actions updates.
 - `Patashu` attribution line in `LICENSE`.
 - Standard Rust entries added to `.gitignore` (`*.rs.bk`, `*.pdb`, `.idea/`, `.DS_Store`).
+- Crate-wide lint gating: `#![warn(clippy::pedantic)]`, `#![deny(unsafe_op_in_unsafe_fn)]`, with a tailored allow list for numeric-library idioms.
+- `pub const COMPARE_EPSILON: f64 = 1e-10` hoisted to `constants.rs`; all magic `1e-10` literals in arithmetic and parse logic now reference it.
 
 ## [0.1.0] - 2026-05-25
 
@@ -109,10 +102,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes
 
-- **Known issue (fixed in 0.1.1)**: published `repository` and `homepage` URLs link to a non-existent GitHub repo.
-- **Known issue (fixed in 0.1.1)**: published `authors` field exposed a personal email address.
+- **Known issue (fixed in 0.2.0)**: published `repository` and `homepage` URLs link to a non-existent GitHub repo.
+- **Known issue (fixed in 0.2.0)**: published `authors` field exposed a personal email address.
 
 [Unreleased]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.2.0-rc.1...HEAD
-[0.2.0-rc.1]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.1.1...v0.2.0-rc.1
-[0.1.1]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.1.0...v0.1.1
+[0.2.0-rc.1]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.1.0...v0.2.0-rc.1
 [0.1.0]: https://github.com/MaddisonM79/break-eternity-rs/releases/tag/v0.1.0

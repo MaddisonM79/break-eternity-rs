@@ -5,10 +5,6 @@ use crate::utils::sign;
 
 /// A Decimal number that can represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308).
 #[derive(Clone, Copy, Debug, Default)]
-#[cfg_attr(
-    feature = "godot",
-    derive(gdnative::prelude::FromVariant, gdnative::prelude::ToVariant)
-)]
 pub struct Decimal {
     /// Sign of the Decimal. 1 for positive, -1 for negative, 0 for zero.
     pub(crate) sign: i8,

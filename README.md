@@ -25,12 +25,14 @@ break-eternity-rs = "0.1"
 
 ## Additional Features
 
-This crate has 2 more features that can be used:
+This crate has the following optional features:
 
-* `serde`, which adds support for serde
-* `godot`, which adds `FromVariant` and `ToVariant` from `gdnative` to the derived traits
+* `serde` — `Serialize`/`Deserialize` implementations (string-based).
+* `godot4` — `GodotConvert`/`FromGodot`/`ToGodot` for the [`godot`](https://crates.io/crates/godot) crate (Godot 4 / gdext).
+* `godot3` — **deprecated** — `FromVariant`/`ToVariant` for the [`gdnative`](https://crates.io/crates/gdnative) crate (Godot 3). Will be removed in 0.3.0.
+* `wasm` — exposes `Decimal` to JavaScript via [`wasm-bindgen`](https://crates.io/crates/wasm-bindgen).
 
-By default, both features are disabled. If you want this library to include support for a different library, please open an issue and tell me about it. I would be more than happy to add more support for game engines, since this is a library that's supposed to be used for games.
+All features are off by default. Enable as needed via `features = [...]` in your `Cargo.toml`.
 
 ## Internal Representation
 

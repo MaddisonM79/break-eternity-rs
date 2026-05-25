@@ -36,12 +36,18 @@ mod constants;
 mod decimal;
 mod error;
 mod format;
+#[cfg(feature = "godot3")]
+mod gdnative_impl;
+#[cfg(feature = "godot4")]
+mod godot_impl;
 mod parse;
 #[cfg(feature = "serde")]
 mod serde_impl;
 mod tetration;
 mod transcendental;
 mod utils;
+#[cfg(feature = "wasm")]
+mod wasm;
 
 pub use constants::{
     COMPARE_EPSILON, EXPN1, EXPONENT_LIMIT, FIRST_NEG_LAYER, LAYER_REDUCTION_THRESHOLD,
