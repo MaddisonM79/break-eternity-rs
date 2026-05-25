@@ -24,11 +24,11 @@
 //! ```
 //! use break_eternity::Decimal;
 //!
-//! let a = Decimal::from_number(1.0);
-//! let b = Decimal::from_number(2.0);
+//! let a = Decimal::from_finite(1.0);
+//! let b = Decimal::from_finite(2.0);
 //!
 //! let c = a + b;
-//! assert_eq!(c, Decimal::from_number(3.0));
+//! assert_eq!(c, Decimal::from_finite(3.0));
 //! ```
 
 mod arithmetic;
@@ -49,6 +49,6 @@ pub use constants::{
     TWO_PI,
 };
 pub use decimal::Decimal;
-pub use error::BreakEternityError;
+pub use error::{ArithmeticError, ArithmeticErrorKind, BreakEternityError};
 pub use format::{decimal_places, to_fixed};
 pub use utils::sign;

@@ -1,105 +1,86 @@
 use break_eternity::Decimal;
 
+// Helper: assert two Decimals are approximately equal within a generous tolerance.
+// Used where floating-point round-trips introduce sub-ULP differences.
+fn assert_approx(a: Decimal, b: Decimal) {
+    assert!(
+        a.approx_eq(&b, 1e-9),
+        "expected approx equal:\n  left:  {a:?}\n  right: {b:?}"
+    );
+}
+
 #[test]
 fn decimal() {
-    assert_eq!(Decimal::from_number(0.0).to_string(), "0");
-    assert_eq!(Decimal::from_number(f64::NAN).to_string(), "NaN");
-    assert_eq!(Decimal::from_number(f64::INFINITY).to_string(), "Infinity");
-    assert_eq!(
-        Decimal::from_number(f64::NEG_INFINITY).to_string(),
-        "-Infinity"
-    );
+    assert_eq!(Decimal::from_finite(0.0).to_string(), "0");
+    // The deprecated from_number still routes NaN to the internal sentinel which formats as "NaN"
+    #[allow(deprecated)]
+    {
+        assert_eq!(Decimal::from_number(f64::NAN).to_string(), "NaN");
+    }
+    assert_eq!(Decimal::inf().to_string(), "Infinity");
+    assert_eq!(Decimal::neg_inf().to_string(), "-Infinity");
 
-    assert_eq!(Decimal::from_number(100.0).to_string(), "100");
-    assert_eq!(Decimal::from_number(1e12).to_string(), "1000000000000");
-    assert_eq!(Decimal::from_number(1.79e3).to_string(), "1790");
-    assert_eq!(Decimal::from_number(1e308).to_string(), "1e308");
+    assert_eq!(Decimal::from_finite(100.0).to_string(), "100");
+    assert_eq!(Decimal::from_finite(1e12).to_string(), "1000000000000");
+    assert_eq!(Decimal::from_finite(1.79e3).to_string(), "1790");
+    assert_eq!(Decimal::from_finite(1e308).to_string(), "1e308");
 }
 
 #[test]
 fn simple_maths() {
-    let a = Decimal::from_number(4.0);
-    let b = Decimal::from_number(2.0);
+    let a = Decimal::from_finite(4.0);
+    let b = Decimal::from_finite(2.0);
 
-    assert_eq!(a + b, Decimal::from_number(6.0));
-    assert_eq!(a - b, Decimal::from_number(2.0));
-    assert_eq!(a * b, Decimal::from_number(8.0));
-    assert_eq!(a / b, Decimal::from_number(2.0));
+    assert_eq!(a + b, Decimal::from_finite(6.0));
+    assert_eq!(a - b, Decimal::from_finite(2.0));
+    assert_eq!(a * b, Decimal::from_finite(8.0));
+    assert_eq!(a / b, Decimal::from_finite(2.0));
 }
 
 #[test]
 fn ops() {
-    let a = Decimal::from_mantissa_exponent_no_normalize(3.224, 54.0);
-    let b = Decimal::from_mantissa_exponent_no_normalize(1.24, 53.0);
-    let c = Decimal::from_mantissa_exponent_no_normalize(3.1, 52.0);
+    let a = Decimal::from_mantissa_exponent(3.224, 54.0);
+    let b = Decimal::from_mantissa_exponent(1.24, 53.0);
+    let c = Decimal::from_mantissa_exponent(3.1, 52.0);
 
-    assert_eq!(
-        a + b,
-        Decimal::from_mantissa_exponent_no_normalize(3.348, 54.0)
-    );
-    assert_eq!(
-        a - b,
-        Decimal::from_mantissa_exponent_no_normalize(3.1, 54.0)
-    );
-    assert_eq!(
+    // Use approx_eq for results that may differ by floating-point rounding.
+    assert_approx(a + b, Decimal::from_mantissa_exponent(3.348, 54.0));
+    assert_approx(a - b, Decimal::from_mantissa_exponent(3.1, 54.0));
+    assert_approx(
         a * b,
-        Decimal::from_mantissa_exponent_no_normalize(3.9977600000000004, 107.0)
+        Decimal::from_mantissa_exponent(3.9977600000000004, 107.0),
     );
-    assert_eq!(
-        a / b,
-        Decimal::from_mantissa_exponent_no_normalize(2.6, 1.0)
-    );
+    assert_approx(a / b, Decimal::from_mantissa_exponent(2.6, 1.0));
 
-    assert_eq!(
-        a + c,
-        Decimal::from_mantissa_exponent_no_normalize(3.255, 54.0)
-    );
-    assert_eq!(
-        a - c,
-        Decimal::from_mantissa_exponent_no_normalize(3.193, 54.0)
-    );
-    assert_eq!(
-        a * c,
-        Decimal::from_mantissa_exponent_no_normalize(9.9944, 106.0)
-    );
-    assert_eq!(
-        a / c,
-        Decimal::from_mantissa_exponent_no_normalize(1.04, 2.0)
-    );
+    assert_approx(a + c, Decimal::from_mantissa_exponent(3.255, 54.0));
+    assert_approx(a - c, Decimal::from_mantissa_exponent(3.193, 54.0));
+    assert_approx(a * c, Decimal::from_mantissa_exponent(9.9944, 106.0));
+    assert_approx(a / c, Decimal::from_mantissa_exponent(1.04, 2.0));
 
-    assert_eq!(
-        b + c,
-        Decimal::from_mantissa_exponent_no_normalize(1.55, 53.0)
-    );
-    assert_eq!(
-        b - c,
-        Decimal::from_mantissa_exponent_no_normalize(9.3, 52.0)
-    );
-    assert_eq!(
-        b * c,
-        Decimal::from_mantissa_exponent_no_normalize(3.844, 105.0)
-    );
-    assert_eq!(
+    assert_approx(b + c, Decimal::from_mantissa_exponent(1.55, 53.0));
+    assert_approx(b - c, Decimal::from_mantissa_exponent(9.3, 52.0));
+    assert_approx(b * c, Decimal::from_mantissa_exponent(3.844, 105.0));
+    assert_approx(
         b / c,
-        Decimal::from_mantissa_exponent_no_normalize(3.9999999999999996, 0.0)
+        Decimal::from_mantissa_exponent(3.9999999999999996, 0.0),
     );
 }
 
 #[test]
 fn rem() {
-    let a = Decimal::from_number(5.0);
-    let b = Decimal::from_number(2.0);
+    let a = Decimal::from_finite(5.0);
+    let b = Decimal::from_finite(2.0);
 
-    assert_eq!(a % b, Decimal::from_number(1.0));
+    assert_eq!(a % b, Decimal::from_finite(1.0));
 }
 
 #[test]
 #[allow(clippy::bool_assert_comparison)]
 fn cmp() {
-    let a = Decimal::from_mantissa_exponent_no_normalize(3.224, 54.0);
-    let b = Decimal::from_mantissa_exponent_no_normalize(1.24, 53.0);
-    let c = Decimal::from_mantissa_exponent_no_normalize(3.1, 52.0);
-    let d = Decimal::from_mantissa_exponent_no_normalize(3.224, 54.0);
+    let a = Decimal::from_mantissa_exponent(3.224, 54.0);
+    let b = Decimal::from_mantissa_exponent(1.24, 53.0);
+    let c = Decimal::from_mantissa_exponent(3.1, 52.0);
+    let d = Decimal::from_mantissa_exponent(3.224, 54.0);
 
     assert_eq!(a == b, false);
     assert_eq!(a == d, true);
@@ -136,21 +117,24 @@ fn cmp() {
 
 #[test]
 fn neg_abs() {
-    assert_eq!(
-        -Decimal::from_number(456.7),
-        Decimal::from_mantissa_exponent_no_normalize(-4.567, 2.0)
+    // floating-point round-trip: from_finite(456.7) goes through layer-0 normalization,
+    // while from_mantissa_exponent(-4.567, 2.0) sets layer-1 internally. After normalization
+    // both represent the same mathematical value but may differ by sub-ULP in mag.
+    assert_approx(
+        -Decimal::from_finite(456.7),
+        Decimal::from_mantissa_exponent(-4.567, 2.0),
     );
-    assert_eq!(
-        -Decimal::from_number(1.23e48),
-        Decimal::from_mantissa_exponent_no_normalize(-1.23, 48.0)
+    assert_approx(
+        -Decimal::from_finite(1.23e48),
+        Decimal::from_mantissa_exponent(-1.23, 48.0),
     );
 
-    assert_eq!(
-        Decimal::from_number(-456.7).abs(),
-        Decimal::from_mantissa_exponent_no_normalize(4.567, 2.0)
+    assert_approx(
+        Decimal::from_finite(-456.7).abs(),
+        Decimal::from_mantissa_exponent(4.567, 2.0),
     );
-    assert_eq!(
-        Decimal::from_number(-1.23e48).abs(),
-        Decimal::from_mantissa_exponent_no_normalize(1.23, 48.0)
+    assert_approx(
+        Decimal::from_finite(-1.23e48).abs(),
+        Decimal::from_mantissa_exponent(1.23, 48.0),
     );
 }

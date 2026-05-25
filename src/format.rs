@@ -9,19 +9,24 @@ use crate::decimal::Decimal;
 // Standalone formatting helpers (public so decimal.rs can call them)
 // ---------------------------------------------------------------------------
 
-/// Formats the given number to the given number of significant digits.
-pub fn to_fixed(num: f64, places: i32) -> String {
-    format!("{:.*}", places.try_into().unwrap_or(0usize), num)
+/// Formats the given number to `places` decimal places.
+pub fn to_fixed(num: f64, places: usize) -> String {
+    format!("{num:.places$}")
 }
 
-/// Truncates the given number to the given number of significant digits and rounds, if necessary.
+/// Truncates `num` to `places` significant digits, rounding as needed.
+///
+/// Uses direct float arithmetic instead of format-and-reparse to avoid
+/// `unwrap()` on parse and to be more explicit about the rounding.
 pub fn decimal_places(num: f64, places: i32) -> f64 {
-    let len = places as f64 + 1_f64;
-    let num_digits = num.abs().log10().ceil();
-    let rounded = (num * 10_f64.powf(len - num_digits)).round() * 10_f64.powf(num_digits - len);
-    to_fixed(rounded, (len - num_digits).max(0_f64) as i32)
-        .parse()
-        .unwrap()
+    if !num.is_finite() {
+        return num;
+    }
+    if places < 0 {
+        return num;
+    }
+    let factor = 10f64.powi(places);
+    (num * factor).round() / factor
 }
 
 // ---------------------------------------------------------------------------
@@ -129,7 +134,7 @@ impl LowerExp for Decimal {
             return write!(f, "-Infinity");
         }
 
-        if *self == Decimal::nan() {
+        if self.has_nan_mag() {
             return write!(f, "NaN");
         }
 
@@ -156,7 +161,7 @@ impl UpperExp for Decimal {
             return write!(f, "-Infinity");
         }
 
-        if *self == Decimal::nan() {
+        if self.has_nan_mag() {
             return write!(f, "NaN");
         }
 
@@ -183,7 +188,7 @@ impl Display for Decimal {
             return write!(f, "-Infinity");
         }
 
-        if *self == Decimal::nan() {
+        if self.has_nan_mag() {
             return write!(f, "NaN");
         }
 

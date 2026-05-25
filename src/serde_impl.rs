@@ -1,6 +1,9 @@
-//! Optional serde support for [`Decimal`].
+//! Serde implementation: serializes Decimal as a string via `Display`,
+//! deserializes via `TryFrom<&str>`. Human-readable and format-agnostic
+//! (suitable for JSON save files). Not the most compact representation
+//! for binary formats — if size matters, consider a custom Serialize.
 //!
-//! Enable with the `serde` feature flag. Serializes to/from a string representation.
+//! Enable with the `serde` Cargo feature.
 
 use std::convert::TryInto;
 
