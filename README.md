@@ -20,7 +20,7 @@ Or add it manually to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-break-eternity-rs = "0.1"
+break-eternity-rs = "0.2"
 ```
 
 ## Additional Features

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0-rc.1] - Unreleased
+## [0.2.0] - 2026-05-25
 
 ### Breaking
 
@@ -135,6 +135,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Known issue (fixed in 0.2.0)**: published `repository` and `homepage` URLs link to a non-existent GitHub repo.
 - **Known issue (fixed in 0.2.0)**: published `authors` field exposed a personal email address.
 
-[Unreleased]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.2.0-rc.1...HEAD
-[0.2.0-rc.1]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.1.0...v0.2.0-rc.1
+[Unreleased]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/MaddisonM79/break-eternity-rs/releases/tag/v0.1.0
