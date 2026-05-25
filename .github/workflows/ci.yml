@@ -53,7 +53,11 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
-      - run: cargo test --all-features
+      # godot3/godot4/wasm features need platform-specific toolchains
+      # (libclang for gdext, vcpkg for gdnative on Windows, wasm32 target);
+      # they are exercised in their own dedicated jobs. The core test
+      # matrix runs against the default + serde features only.
+      - run: cargo test --features serde
       - run: cargo build --no-default-features
 
   msrv:
@@ -65,7 +69,10 @@ jobs:
         with:
           toolchain: "1.70"
       - uses: Swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
-      - run: cargo build --all-features
+      # MSRV applies to the core crate + serde feature. wasm-bindgen,
+      # godot 0.5 (gdext), and friends require newer Rust and are
+      # validated in their own jobs.
+      - run: cargo build --features serde
 
   wasm:
     name: wasm32 build
