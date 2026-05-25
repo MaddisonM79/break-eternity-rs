@@ -1,12 +1,27 @@
 # break-eternity-rs
 
-![https://crates.io/crates/break-eternity-rs](https://img.shields.io/crates/v/break-eternity-rs.svg)
+[![crates.io](https://img.shields.io/crates/v/break-eternity-rs.svg)](https://crates.io/crates/break-eternity-rs)
+[![docs.rs](https://img.shields.io/docsrs/break-eternity-rs)](https://docs.rs/break-eternity-rs)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A fork of [cozyGalvinism's break-eternity](https://github.com/cozyGalvinism/break-eternity), itself a port of [Patashu's break_eternity.js](https://github.com/Patashu/break_eternity.js).
 
 A numerical library to represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308).
 
 This library focuses less on precision and more on speed. It is intended to be used by games.
+
+## Installation
+
+```sh
+cargo add break-eternity-rs
+```
+
+Or add it manually to your `Cargo.toml`:
+
+```toml
+[dependencies]
+break-eternity-rs = "0.1"
+```
 
 ## Additional Features
 

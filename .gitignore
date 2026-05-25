@@ -1,3 +1,20 @@
+# Cargo build output
 /target
+debug/
+
+# Library crate: ignore Cargo.lock
+# https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
 Cargo.lock
+
+# rustfmt backup files
+**/*.rs.bk
+
+# MSVC Windows debug info
+*.pdb
+
+# Editor / IDE
 /.vscode
+.idea/
+
+# macOS
+.DS_Store
