@@ -16,24 +16,7 @@
 #![allow(clippy::unreadable_literal)]
 #![allow(clippy::return_self_not_must_use)]
 #![crate_name = "break_eternity"]
-
-//! A numerical library to represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308).
-//!
-//! # Examples
-//!
-//! ```
-//! use break_eternity::Decimal;
-//!
-//! let a = Decimal::from_finite(1.0);
-//! let b = Decimal::from_finite(2.0);
-//!
-//! let c = a + b;
-//! assert_eq!(c, Decimal::from_finite(3.0));
-//! ```
-
-#[cfg(doctest)]
-#[doc = include_str!("../README.md")]
-mod readme_doctests {}
+#![doc = include_str!("../README.md")]
 
 mod arithmetic;
 mod constants;
