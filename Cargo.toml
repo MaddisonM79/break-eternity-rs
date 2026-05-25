@@ -10,7 +10,7 @@ repository = "https://github.com/MaddisonM79/break-eternity-rs"
 homepage = "https://github.com/MaddisonM79/break-eternity-rs"
 documentation = "https://docs.rs/break-eternity-rs"
 keywords = ["big", "decimal", "bigdecimal", "incremental", "games"]
-categories = ["game-development", "science::mathematics"]
+categories = ["game-development", "mathematics"]
 readme = "README.md"
 exclude = [".gitignore", ".vscode", ".github"]
 

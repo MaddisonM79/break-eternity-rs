@@ -109,7 +109,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Edition bump to 2021, MSRV declared as `rust-version = "1.94"`. (The MSRV is set by the optional `godot 0.5.3` / `gdext` dependency, which cargo's resolver picks up even when the `godot4` feature is disabled. The core crate alone — without godot4 — could compile on 1.70+, but cargo's resolution model does not allow declaring a lower MSRV than the highest-required dep in the manifest.)
 - Dependency modernization: `lazy_static` → `std::sync::OnceLock`, `custom_error` → `thiserror`, removed unused `num-derive` / `num-traits` / `pad`.
 - `authors` field in `Cargo.toml` reduced to GitHub handles only — no personal names or email addresses.
-- `categories` updated from `"mathematics"` to the canonical `"science::mathematics"` crates.io slug.
 - `src/lib.rs` (~2,530 LOC) split into focused submodules: `arithmetic`, `constants`, `decimal`, `error`, `format`, `parse`, `serde_impl`, `tetration`, `transcendental`, `utils`.
 - `documentation` field in `Cargo.toml` linking to docs.rs and a `[package.metadata.docs.rs]` block.
 - `docs.rs` and MIT license badges in `README.md`.
