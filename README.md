@@ -280,7 +280,7 @@ assert_eq!(save.money, back.money);
 
 ### Godot 4
 
-Enable `features = ["godot4"]`. `Decimal` crosses the GDScript boundary as a `GString`, so you can store and pass it around freely.
+Enable `features = ["godot4"]`. `Decimal` crosses the `GDScript` boundary as a `GString`, so you can store and pass it around freely.
 
 ```rust,ignore
 use break_eternity::Decimal;
