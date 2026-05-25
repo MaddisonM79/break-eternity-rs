@@ -1,6 +1,8 @@
 # break-eternity-rs
 
-![https://crates.io/crates/break-eternity-rs](https://img.shields.io/crates/v/break-eternity-rs.svg)
+[![crates.io](https://img.shields.io/crates/v/break-eternity-rs.svg)](https://crates.io/crates/break-eternity-rs)
+[![docs.rs](https://img.shields.io/docsrs/break-eternity-rs)](https://docs.rs/break-eternity-rs)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A fork of [cozyGalvinism's break-eternity](https://github.com/cozyGalvinism/break-eternity), itself a port of [Patashu's break_eternity.js](https://github.com/Patashu/break_eternity.js).
 
@@ -8,14 +10,29 @@ A numerical library to represent numbers as large as 10^^1e308 and as 'small' as
 
 This library focuses less on precision and more on speed. It is intended to be used by games.
 
+## Installation
+
+```sh
+cargo add break-eternity-rs
+```
+
+Or add it manually to your `Cargo.toml`:
+
+```toml
+[dependencies]
+break-eternity-rs = "0.1"
+```
+
 ## Additional Features
 
-This crate has 2 more features that can be used:
+This crate has the following optional features:
 
-* `serde`, which adds support for serde
-* `godot`, which adds `FromVariant` and `ToVariant` from `gdnative` to the derived traits
+* `serde` — `Serialize`/`Deserialize` implementations (string-based).
+* `godot4` — `GodotConvert`/`FromGodot`/`ToGodot` for the [`godot`](https://crates.io/crates/godot) crate (Godot 4 / gdext).
+* `godot3` — **deprecated** — `FromVariant`/`ToVariant` for the [`gdnative`](https://crates.io/crates/gdnative) crate (Godot 3). Will be removed in 0.3.0.
+* `wasm` — exposes `Decimal` to JavaScript via [`wasm-bindgen`](https://crates.io/crates/wasm-bindgen).
 
-By default, both features are disabled. If you want this library to include support for a different library, please open an issue and tell me about it. I would be more than happy to add more support for game engines, since this is a library that's supposed to be used for games.
+All features are off by default. Enable as needed via `features = [...]` in your `Cargo.toml`.
 
 ## Internal Representation
 
@@ -32,9 +49,27 @@ Decimal implements `Copy` and `Clone`, so it can be safely dereferenced without 
 
 ## Creating a Decimal
 
-You can create a Decimal using `Decimal::from_number(f64)`, `Decimal::try_from(&str)` or manually using `Decimal::from_components(sign, layer, mag)` or `Decimal::from_mantissa_exponent(mantissa, exponent)`.
+```rust
+use break_eternity::Decimal;
 
-If you use the struct initialization syntax, please make sure to run the `normalize()` function to normalize the Decimal.
+// Infallible — finite f64 only (debug-asserted)
+let a = Decimal::from_finite(1.5);
+
+// Fallible — rejects NaN / ±Infinity
+let b = Decimal::try_from(f64::INFINITY); // Err(ArithmeticError { kind: Undefined, .. })
+
+// From string
+let c: Decimal = "1.234e567".try_into().unwrap();
+
+// From components (auto-normalized)
+let d = Decimal::from_components(1, 2, 30.0);
+let e = Decimal::from_mantissa_exponent(1.234, 567.0);
+
+// Integer types use From
+let f = Decimal::from(42_i32);
+```
+
+Fields are private; use accessors (`sign()`, `layer()`, `mag()`, `mantissa()`, `exponent()`) to read state.
 
 ### Accepted String representations
 
@@ -62,13 +97,38 @@ X^^^N;Y === X^^X^^X^^ ... (N X^^s) Y
 
 ## Operations
 
-Thanks to the power of Rust traits, you can simply use the regular operators (`+`, `-`, `*`, `/`, `%`, `+=`, `-=`, `*=`, `/=`, `%=`) for math operations as well as other mathematical functions, such as: `abs, neg, round, floor, ceil, trunc, recip, cmp, cmpabs, max, min, maxabs, minabs, log, log10, ln, pow, root, factorial, gamma, exp, sqrt, tetrate, iteratedexp, iteratedlog, layer_add_10, layer_add, slog, ssqrt, lambertw, pentate`.
+You can use the regular operators (`+`, `-`, `*`, `/`, `%`, `+=`, `-=`, `*=`, `/=`, `%=`) as well as named functions: `abs, neg, round, floor, ceil, trunc, recip, cmp, cmpabs, max, min, maxabs, minabs, log, log10, ln, pow, root, factorial, gamma, exp, sqrt, tetrate, iteratedlog, layer_add_10, layer_add, slog, ssqrt, lambertw, pentate`.
 
-Equality is handled in a special way, such that if both sides are NaN or Infinity, they are equal. Other than that, Decimals are considered equal to a precision of `1e-10`.
+Primitive number types work on either side: `Decimal::from_finite(1.0) + 2.0`, `3 * Decimal::from(4)`, etc.
 
-As seen above, the modulo operator is also implemented properly and should be just as accurate as other operations.
+### Fallible vs panicking arithmetic
 
-Another simplicity feature is the implementation for said operators for all primitive number types, which means you can add like this `Decimal::from_number(1.0) + 2.0`. Conversions also work the same way, any primitve number type can be converted to Decimal using `from()` and `into()`.
+Starting in 0.2, undefined results (division by zero, ln of non-positive, lambertw out of domain, etc.) are surfaced through the type system. Each arithmetic method has two flavors:
+
+```rust
+// Panicking: matches integer-overflow convention.
+let c = a + b;
+let d = a.pow(b);
+
+// Fallible: returns Result<Decimal, ArithmeticError>.
+let c = a.checked_add(&b)?;
+let d = a.checked_pow(&b)?;
+```
+
+Use `checked_*` when you accept untrusted input (save files, user expressions) or when the operands could plausibly produce NaN. Use the operator forms when arithmetic is well-defined by construction.
+
+### Equality
+
+`PartialEq` is **exact** in 0.2 (bit-equal `sign`, `layer`, `mag`). `-0.0` is canonicalized to `0.0` so equal-comparing values also hash equal — `Decimal` is a valid `HashMap` key.
+
+For tolerance-based comparison, use `approx_eq`:
+
+```rust
+let a = Decimal::from_finite(1.0);
+let b = Decimal::from_finite(1.0 + 1e-12);
+assert!(a != b);                  // exact
+assert!(a.approx_eq(&b, 1e-10));  // tolerance
+```
 
 ## Note to bugs
 
