@@ -31,6 +31,10 @@
 //! assert_eq!(c, Decimal::from_finite(3.0));
 //! ```
 
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+mod readme_doctests {}
+
 mod arithmetic;
 mod constants;
 mod decimal;
