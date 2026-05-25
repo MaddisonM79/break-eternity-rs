@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-25
+
+### Changed
+
+- Full README rewrite for clarity and scanability. Reorganized into Quick Start, Features table, Constants table, seven Operations tables (arithmetic, powers and roots, logarithms, tetration, special functions, trig and hyperbolics, comparison and clamping), six worked examples (five idle/incremental, one generic factorial), MSRV, Contributing, Acknowledgements (now crediting cozyGalvinism), and License sections.
+- Replaced the inherited "Note to bugs" and "Afterword" sections (carried over from the original Rust port) with a short, professional Contributing section.
+- README is now the crate-level documentation. `src/lib.rs` uses `#![doc = include_str!("../README.md")]`, so the README becomes the docs.rs landing page in place of the previous thin crate doc-comment. Every Rust block in the README is doctested by `cargo test --doc`.
+
 ## [0.2.0] - 2026-05-25
 
 ### Breaking
