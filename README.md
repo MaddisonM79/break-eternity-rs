@@ -383,4 +383,4 @@ Issues and pull requests live at [github.com/MaddisonM79/break-eternity-rs](http
 
 ## License
 
-Licensed under the MIT License — see [LICENSE](LICENSE).
+Licensed under the MIT License — see [LICENSE](https://github.com/MaddisonM79/break-eternity-rs/blob/develop/LICENSE).
