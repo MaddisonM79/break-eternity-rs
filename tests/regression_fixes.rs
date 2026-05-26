@@ -365,3 +365,119 @@ fn slog_analytic_round_trip_through_tetrate_analytic() {
         );
     }
 }
+
+#[test]
+fn iteratedlog_propagates_mode() {
+    // Lock the iteratedlog mode-propagation chain. If a future refactor
+    // accidentally drops `mode` from layer_add_10 / layer_add inside
+    // iteratedlog, the two modes will silently collapse to one path —
+    // this test fails first.
+    let x = Decimal::try_from("ee100").unwrap();
+    let ten = Decimal::from_finite(10.0);
+    let a = x.iteratedlog(ten, 2.5, TetrationMode::Analytic);
+    let l = x.iteratedlog(ten, 2.5, TetrationMode::Linear);
+    assert!(
+        !a.approx_eq(&l, 1e-10),
+        "iteratedlog(ee100, 10, 2.5) modes should diverge: analytic={:?}, linear={:?}",
+        a, l
+    );
+}
+
+#[test]
+fn pentate_propagates_mode() {
+    // Pentate at fractional height calls into tetrate, which has the
+    // analytic critical-section branch. Mode must reach it.
+    let two = Decimal::from_finite(2.0);
+    let a = two.pentate(Some(2.5), None, TetrationMode::Analytic);
+    let l = two.pentate(Some(2.5), None, TetrationMode::Linear);
+    assert!(
+        !a.approx_eq(&l, 1e-10),
+        "pentate(2, 2.5) modes should diverge: analytic={:?}, linear={:?}",
+        a, l
+    );
+}
+
+#[test]
+fn layer_add_propagates_mode() {
+    // layer_add calls slog internally with the supplied mode. Mode-aware
+    // slog produces different answers analytic vs linear, so layer_add
+    // should too.
+    let x = Decimal::from_finite(100.0);
+    let ten = Decimal::from_finite(10.0);
+    let a = x.layer_add(0.5, ten, TetrationMode::Analytic);
+    let l = x.layer_add(0.5, ten, TetrationMode::Linear);
+    assert!(
+        !a.approx_eq(&l, 1e-10),
+        "layer_add(100, 0.5, base=10) modes should diverge: analytic={:?}, linear={:?}",
+        a, l
+    );
+}
+
+#[test]
+fn tetrate_above_base_10_analytic_equals_linear() {
+    // The critical-section table covers bases in [2, 10]. For base > 10
+    // the analytic path must fall through to the linear approximation —
+    // locks the `base_num <= 10.0` guard in checked_tetrate.
+    let eleven = Decimal::from_finite(11.0);
+    let a = eleven.tetrate(Some(2.5), None, TetrationMode::Analytic);
+    let l = eleven.tetrate(Some(2.5), None, TetrationMode::Linear);
+    assert!(
+        a.approx_eq(&l, 1e-12),
+        "tetrate(11, 2.5): base > 10 must use linear path in both modes; got analytic={:?}, linear={:?}",
+        a, l
+    );
+}
+
+#[test]
+fn layer_add_10_sign_move_b() {
+    // JS bugfix B: (-3).layer_add_10(1) should equal 10^(-3) = 0.001, not -1000.
+    // The negative sign moves to mag before the layer-bump.
+    for mode in [TetrationMode::Analytic, TetrationMode::Linear] {
+        let r = Decimal::from_finite(-3.0)
+            .layer_add_10(Decimal::from_finite(1.0), mode)
+            .to_number();
+        assert!(
+            (r - 0.001).abs() < 1e-12,
+            "(-3).layer_add_10(1, {:?}) = {}, expected 0.001",
+            mode, r
+        );
+    }
+}
+
+#[test]
+fn layer_add_10_display_doesnt_panic_on_zero_negative() {
+    // JS bugfix C: 0.layer_add_10(-2) used to return an unnormalized
+    // (sign=0, layer=-1, mag=-inf) Decimal whose Display impl panicked
+    // with `capacity overflow`. Now should produce a normalized output
+    // (JS returns -Infinity).
+    for mode in [TetrationMode::Analytic, TetrationMode::Linear] {
+        let r = Decimal::from_finite(0.0).layer_add_10(Decimal::from_finite(-2.0), mode);
+        // The key safety property: Display must not panic.
+        let _ = format!("{}", r);
+    }
+}
+
+#[test]
+fn tetrate_positive_infinity_doesnt_panic() {
+    // JS bugfix: tetrate(base, +Infinity, 1) should return Infinity for
+    // base > 1.444 (no fixed point, tower diverges) instead of panicking
+    // with `lambertw OutOfDomain`.
+    let r = Decimal::from_finite(2.0).tetrate(
+        Some(f64::INFINITY),
+        Some(Decimal::from_finite(1.0)),
+        TetrationMode::Analytic,
+    );
+    assert_eq!(r, Decimal::inf(), "tetrate(2, +Inf) should be Inf, got {:?}", r);
+
+    // For base in the convergence zone, lambertw applies and returns a fixed point.
+    let r = Decimal::from_finite(1.2).tetrate(
+        Some(f64::INFINITY),
+        Some(Decimal::from_finite(1.0)),
+        TetrationMode::Analytic,
+    );
+    assert!(
+        r.to_number().is_finite() && r.to_number() > 1.0,
+        "tetrate(1.2, +Inf) should converge to a fixed point > 1, got {:?}",
+        r
+    );
+}

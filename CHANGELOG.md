@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `pow10`: off-by-epsilon at `10^-1` (returned 1.0 instead of 0.1). Also added `±Inf` short-circuits.
   - `exp` at layer 1: sign distribution bug — `exp(huge-negative)` returned huge-negative instead of tiny-positive.
   - `factorial` at layer 1: grouping bug in Stirling formula.
+  - `layer_add_10`: ported four JS bugfixes that were missing. `(-3).layer_add_10(1)` now returns `0.001` (was `-1000`); `0.layer_add_10(-2)` now returns `-Infinity` (was an unnormalized sentinel that panicked when displayed); a "very smol" tower (mag < 0, layer > 0) is zeroed before layer-bumping; a sign=0 result with mag=0, layer≥1 is collapsed to layer-1, mag=1 before final normalize.
+  - `tetrate(base, +Infinity, payload)`: the lambertw shortcut now branches on base. For `base > 1.444` returns `Infinity` (tower diverges) rather than panicking with `lambertw OutOfDomain`. For `base < 0.066` returns NaN (oscillates without converging). The convergence-zone path `[0.066, 1.444]` still uses lambertw.
 
 ### Known gaps (tracked separately)
 

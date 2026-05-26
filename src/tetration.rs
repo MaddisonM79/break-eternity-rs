@@ -62,6 +62,19 @@ impl Decimal {
         mode: TetrationMode,
     ) -> Result<Decimal, ArithmeticError> {
         if height.is_infinite() && height.is_sign_positive() {
+            // Branch on base — matches JS lines 2588-2613. The lambertw
+            // shortcut only applies in the convergence zone where the
+            // tower has a fixed point.
+            let this_num = self.to_number();
+            if this_num > 1.444_667_861_009_766_2 {
+                // Outside convergence; tower diverges.
+                return Ok(Decimal::inf());
+            }
+            if this_num < 0.065_988_035_845_312_54 {
+                // Either oscillates without converging (0..0.066) or
+                // would yield complex values (this_num < 0).
+                return Ok(Decimal::nan_sentinel());
+            }
             let neg_ln = self.ln().neg();
             let w = neg_ln.checked_lambertw()?;
             return Ok(w / neg_ln);
@@ -317,6 +330,20 @@ impl Decimal {
         let mut result = *self;
 
         if diff >= 1.0 {
+            // Bugfix A (JS): if `result` is a "very smol" tower (mag < 0,
+            // layer > 0), zero it before layer-bumping up.
+            if result.mag < 0.0 && result.layer > 0 {
+                result.sign = 0;
+                result.mag = 0.0;
+                result.layer = 0;
+            } else if result.sign == -1 && result.layer == 0 {
+                // Bugfix B (JS): for inputs like `-3.layer_add_10(1)` move
+                // the sign onto mag before bumping layer, so we get
+                // 10^(-3) = 0.001 rather than -1000.
+                result.sign = 1;
+                result.mag = -result.mag;
+            }
+
             let layer_add = diff.trunc();
             diff -= layer_add;
             result.layer += layer_add as i64;
@@ -331,6 +358,15 @@ impl Decimal {
                     result.layer += 1;
                     result.mag = result.mag.log10();
                     if !result.mag.is_finite() {
+                        // Bugfix C (JS): mag is -inf — produce ±infinity
+                        // rather than returning an unnormalized sentinel.
+                        if result.sign == 0 {
+                            result.sign = 1;
+                        }
+                        if result.layer < 0 {
+                            result.layer = 0;
+                        }
+                        result.normalize();
                         return result;
                     }
 
@@ -404,6 +440,18 @@ impl Decimal {
                     result.mag = result.mag.log10();
                 }
 
+                // Bugfix D (JS): if we entered with sign=0 the layer-bumping
+                // arithmetic above leaves a sign=0 result whose mag/layer
+                // would otherwise be wrong after normalize. Snap to sign=1
+                // and collapse a stray (mag=0, layer>=1) state.
+                if result.sign == 0 {
+                    result.sign = 1;
+                    if result.mag == 0.0 && result.layer >= 1 {
+                        result.layer -= 1;
+                        result.mag = 1.0;
+                    }
+                }
+
                 result.normalize();
                 result
             }
@@ -415,6 +463,16 @@ impl Decimal {
                     result.layer += 1;
                     result.mag = result.mag.log10();
                 }
+
+                // Bugfix D (JS): same as Linear branch above.
+                if result.sign == 0 {
+                    result.sign = 1;
+                    if result.mag == 0.0 && result.layer >= 1 {
+                        result.layer -= 1;
+                        result.mag = 1.0;
+                    }
+                }
+
                 result.normalize();
                 if diff != 0.0 {
                     return result.layer_add(diff, Decimal::from_finite(10.0), mode);
