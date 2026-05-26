@@ -6,6 +6,7 @@ use crate::constants::commas_are_decimal_points;
 use crate::constants::ignore_commas;
 use crate::decimal::Decimal;
 use crate::error::BreakEternityError;
+use crate::tetration::TetrationMode;
 use crate::utils::f_maglog10;
 
 /// Parses a `&str` slice as an `f64`, mapping parse errors into [`BreakEternityError::ParseError`].
@@ -46,7 +47,7 @@ impl TryFrom<&str> for Decimal {
             }
             if base.is_finite() && height.is_finite() {
                 return Ok(Decimal::from_finite(base)
-                    .pentate(Some(height), Some(Decimal::from_finite(payload))));
+                    .pentate(Some(height), Some(Decimal::from_finite(payload)), TetrationMode::Analytic));
             }
         }
 
@@ -67,7 +68,7 @@ impl TryFrom<&str> for Decimal {
             }
             if base.is_finite() && height.is_finite() {
                 return Ok(Decimal::from_finite(base)
-                    .tetrate(Some(height), Some(Decimal::from_finite(payload))));
+                    .tetrate(Some(height), Some(Decimal::from_finite(payload)), TetrationMode::Analytic));
             }
         }
 
@@ -104,7 +105,7 @@ impl TryFrom<&str> for Decimal {
                 }
                 if height.is_finite() {
                     return Ok(Decimal::from_finite(base)
-                        .tetrate(Some(height), Some(Decimal::from_finite(payload))));
+                        .tetrate(Some(height), Some(Decimal::from_finite(payload)), TetrationMode::Analytic));
                 }
             }
         }
@@ -124,7 +125,7 @@ impl TryFrom<&str> for Decimal {
                 }
                 if height.is_finite() {
                     return Ok(Decimal::from_finite(base)
-                        .tetrate(Some(height), Some(Decimal::from_finite(payload))));
+                        .tetrate(Some(height), Some(Decimal::from_finite(payload)), TetrationMode::Analytic));
                 }
             }
         }

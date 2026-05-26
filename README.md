@@ -159,15 +159,17 @@ The tables below show the method-form of each operation along with its checked v
 
 ### Tetration and beyond
 
+All tetration-family methods take a `mode: TetrationMode` argument. `TetrationMode::Analytic` (the default) matches `break_eternity.js`'s default critical-section interpolation for bases ≤ 10. `TetrationMode::Linear` uses the older closed-form approximation. Bases > 10 always fall back to linear regardless of mode.
+
 | Method | Description | Checked |
 |--------|-------------|---------|
-| `tetrate(height, payload)` | a^^n with optional residual payload | `checked_tetrate` |
+| `tetrate(height, payload, mode)` | a^^n with optional residual payload | `checked_tetrate` |
 | `ssqrt()` | super-square-root (inverse of a^^2) | `checked_ssqrt` |
-| `iteratedlog(base, n)` | iterated logarithm | `checked_iteratedlog` |
-| `slog(base)` | super-logarithm | `checked_slog` |
-| `layer_add(diff, base)` | shift internal layer | — |
-| `layer_add_10(diff)` | shift internal layer (base 10) | — |
-| `pentate(height, payload)` | a^^^n | `checked_pentate` |
+| `iteratedlog(base, n, mode)` | iterated logarithm | `checked_iteratedlog` |
+| `slog(base, mode)` | super-logarithm | `checked_slog` |
+| `layer_add(diff, base, mode)` | shift internal layer | — |
+| `layer_add_10(diff, mode)` | shift internal layer (base 10) | — |
+| `pentate(height, payload, mode)` | a^^^n | `checked_pentate` |
 
 ### Special functions
 
@@ -315,7 +317,7 @@ let huge = Decimal::from(1000_i32).factorial();
 assert!(huge > Decimal::from_finite(f64::MAX));
 println!("1000! = {huge}");
 
-let tower = Decimal::ten().tetrate(Some(4.0), None); // 10^10^10^10
+let tower = Decimal::ten().tetrate(Some(4.0), None, break_eternity::TetrationMode::Analytic); // 10^10^10^10
 println!("10^^4 = {tower}");
 ```
 

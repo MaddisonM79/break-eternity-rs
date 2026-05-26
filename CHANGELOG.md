@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- All tetration-family methods (`tetrate`, `checked_tetrate`, `iteratedexp`, `checked_iteratedexp`, `iteratedlog`, `checked_iteratedlog`, `layer_add`, `layer_add_10`, `pentate`, `checked_pentate`, `slog`, `checked_slog`) now take a `mode: TetrationMode` argument. `TetrationMode` is exported from the crate root. `TetrationMode::Analytic` (the default) matches `break_eternity.js`'s default critical-section interpolation; `TetrationMode::Linear` preserves the older closed-form approximation. Existing call sites must add the mode argument — typically `TetrationMode::Analytic` for JS-equivalent behavior.
+
+### Added
+
+- `TetrationMode` enum (`Analytic`, `Linear`; defaults to `Analytic`).
+- Critical-section interpolation tables (`CRITICAL_HEADERS`, `CRITICAL_SLOG_VALUES`, `CRITICAL_TETR_VALUES`) and the `critical_section` interpolator, ported verbatim from `break_eternity.js@2.1.3`.
+- JS-equivalent 100-iteration step-halving refinement loop wrapping `slog_internal`.
+- Analytic fractional-height path for `tetrate` (bases ≤ 10): uses `tetrate_critical` instead of `base.pow(fract_height)`.
+- Mode propagates through the full `tetrate` → `iteratedlog` → `layer_add_10` → `layer_add` → `slog` recursion chain so the analytic surface reaches every operation.
+- Regression suite: analytic slog values vs JS reference, analytic tetrate values vs JS reference, analytic slog ↔ analytic tetrate round-trip to 1e-8, and locks against modes accidentally collapsing into one path.
+- Parity fixture: new `tetrate2_5` and `tetrate2_5_linear` ops exercise fractional-height tetrate.
+
+### Fixed
+
+- Several math correctness bugs found by the parity audit:
+  - `arithmetic`: additive-inverse collapse used an epsilon tolerance and swallowed legitimate small residuals (e.g., `1 - (1 - 1e-11)` returned 0). Now exact equality.
+  - `sqrt`: layer-1 values with negative mag (tiny positives like 1e-20) returned NaN. Now stays at layer 1 with `mag/2`.
+  - `atanh`: operator precedence bug — `(x+1)/(1-x).ln()/2` instead of `((1+x)/(1-x)).ln()/2`.
+  - `f_gamma` (Stirling series): wrong shift direction (`num += 1.0` should be `num -= 1.0`), wrong pole-detection strict-equality, and four asymptotic coefficient signs flipped.
+  - `gamma` layer-0 Stirling path (`x ≥ 24`): missing `-1/(360·t³)` term caused worst-case rel_err ~3e-7. Now matches scipy to ~1e-14.
+  - `pow10`: off-by-epsilon at `10^-1` (returned 1.0 instead of 0.1). Also added `±Inf` short-circuits.
+  - `exp` at layer 1: sign distribution bug — `exp(huge-negative)` returned huge-negative instead of tiny-positive.
+  - `factorial` at layer 1: grouping bug in Stirling formula.
+
+### Known gaps (tracked separately)
+
+- Fractional-height tetrate of bases in the convergence zone `(0, 1.444]` uses a special JS code path the Rust port hasn't implemented. Affected inputs are skipped in the parity fixture; tracked in a follow-up issue.
+
 ## [0.2.1] - 2026-05-25
 
 ### Changed

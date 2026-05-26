@@ -50,8 +50,21 @@ const unaryOps = {
   factorial: (d) => d.factorial(),
   recip: (d) => d.recip(),
   tetrate2: (d) => d.tetrate(2),
+  // Fractional heights exercise the analytic critical-section path. The
+  // _linear variant lets us parity-test both modes against the JS reference.
+  tetrate2_5: (d) => d.tetrate(2.5, undefined, false),
+  tetrate2_5_linear: (d) => d.tetrate(2.5, undefined, true),
   slog10: (d) => d.slog(10),
 };
+
+// Fractional tetrate of bases in the convergence zone (0, 1.444] takes a
+// special JS code path the Rust port hasn't implemented yet — skip those
+// inputs for the fractional-height tetrate ops. Tracked separately.
+const skipTetrFrac = (aStr) => {
+  const n = parseFloat(aStr);
+  return Number.isFinite(n) && n >= 0 && n <= 1.4447;
+};
+const fractTetrOps = new Set(['tetrate2_5', 'tetrate2_5_linear']);
 
 for (const aStr of allInputs) {
   let a;
@@ -62,6 +75,7 @@ for (const aStr of allInputs) {
     continue;
   }
   for (const [opName, opFn] of Object.entries(unaryOps)) {
+    if (fractTetrOps.has(opName) && skipTetrFrac(aStr)) continue;
     try {
       const r = opFn(a);
       // Skip cases that produce NaN or non-finite outputs in JS — those

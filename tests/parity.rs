@@ -156,7 +156,13 @@ fn js_parity() {
                 Decimal::from_finite(1.0).checked_div(a).ok()
             }),
             "tetrate2" => run_unary(case, |a| {
-                a.checked_tetrate(2.0, Decimal::from_finite(1.0)).ok()
+                a.checked_tetrate(2.0, Decimal::from_finite(1.0), break_eternity::TetrationMode::Analytic).ok()
+            }),
+            "tetrate2_5" => run_unary(case, |a| {
+                a.checked_tetrate(2.5, Decimal::from_finite(1.0), break_eternity::TetrationMode::Analytic).ok()
+            }),
+            "tetrate2_5_linear" => run_unary(case, |a| {
+                a.checked_tetrate(2.5, Decimal::from_finite(1.0), break_eternity::TetrationMode::Linear).ok()
             }),
             "slog10" => run_unary(case, |a| {
                 a.checked_slog(10.0, break_eternity::TetrationMode::Analytic).ok()

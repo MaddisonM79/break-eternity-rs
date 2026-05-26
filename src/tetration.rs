@@ -32,34 +32,30 @@ impl Decimal {
     ///
     /// Panics if `lambertw` is out of domain (infinite height case). Use
     /// [`checked_tetrate`](Self::checked_tetrate) for explicit error handling.
-    pub fn tetrate(&self, height: Option<f64>, payload: Option<Decimal>) -> Decimal {
+    pub fn tetrate(
+        &self,
+        height: Option<f64>,
+        payload: Option<Decimal>,
+        mode: TetrationMode,
+    ) -> Decimal {
         self.checked_tetrate(
             height.unwrap_or(2.0),
             payload.unwrap_or_else(|| Decimal::from_components_unchecked(1, 0, 1.0)),
+            mode,
         )
         .unwrap_or_else(|e| {
             panic!(
-                "undefined Decimal tetrate: {e} (base={self:?}, height={height:?}, payload={payload:?})"
+                "undefined Decimal tetrate: {e} (base={self:?}, height={height:?}, payload={payload:?}, mode={mode:?})"
             )
         })
     }
 
     /// Tetrates the Decimal to the given height, returning an error on failure.
     ///
-    /// Uses the linear fractional-height approximation; for the JS-default
-    /// analytic path see [`Self::tetrate_internal`] (currently `pub(crate)`).
+    /// `mode` selects between the JS-default analytic critical-section path
+    /// and the older linear approximation for the fractional-height branch.
+    /// See [`TetrationMode`].
     pub fn checked_tetrate(
-        &self,
-        height: f64,
-        payload: Decimal,
-    ) -> Result<Decimal, ArithmeticError> {
-        self.tetrate_internal(height, payload, TetrationMode::Linear)
-    }
-
-    /// Tetration core, mode-aware. Public callers should use
-    /// [`Self::checked_tetrate`]; internal callers (slog refinement) need the
-    /// analytic path to converge against the JS reference.
-    pub(crate) fn tetrate_internal(
         &self,
         mut height: f64,
         mut payload: Decimal,
@@ -72,7 +68,7 @@ impl Decimal {
         }
 
         if height < 0.0 {
-            return Ok(payload.iteratedlog_internal(*self, -height, mode));
+            return Ok(payload.iteratedlog(*self, -height, mode));
         }
 
         let old_height = height;
@@ -94,9 +90,9 @@ impl Decimal {
                     payload = Decimal::from_finite(fract_height);
                 }
             } else if *self == Decimal::from_finite(10.0) {
-                payload = payload.layer_add_10_internal(Decimal::from_finite(fract_height), mode);
+                payload = payload.layer_add_10(Decimal::from_finite(fract_height), mode);
             } else {
-                payload = payload.layer_add_internal(fract_height, *self, mode);
+                payload = payload.layer_add(fract_height, *self, mode);
             }
         }
 
@@ -131,8 +127,13 @@ impl Decimal {
     ///
     /// Use [`tetrate`](Self::tetrate); `iteratedexp` is identical.
     #[deprecated(note = "use tetrate; iteratedexp is identical")]
-    pub fn iteratedexp(&self, height: Option<f64>, payload: Option<Decimal>) -> Decimal {
-        self.tetrate(height, payload)
+    pub fn iteratedexp(
+        &self,
+        height: Option<f64>,
+        payload: Option<Decimal>,
+        mode: TetrationMode,
+    ) -> Decimal {
+        self.tetrate(height, payload, mode)
     }
 
     /// Returns `self` iteratively exponentiated, returning an error on failure.
@@ -142,28 +143,19 @@ impl Decimal {
         &self,
         height: f64,
         payload: Decimal,
+        mode: TetrationMode,
     ) -> Result<Decimal, ArithmeticError> {
-        self.checked_tetrate(height, payload)
+        self.checked_tetrate(height, payload, mode)
     }
 
     /// Iterated log: The result of applying log(base) 'times' times in a row.
     ///
     /// Approximately equal to subtracting (times) from the number's slog representation.
     /// Equates to tetrating to a negative height.
-    pub fn iteratedlog(&self, base: Decimal, times: f64) -> Decimal {
-        self.iteratedlog_internal(base, times, TetrationMode::Linear)
-    }
-
-    /// Iterated log, mode-aware. Internal — slog refinement uses Analytic.
-    pub(crate) fn iteratedlog_internal(
-        &self,
-        base: Decimal,
-        mut times: f64,
-        mode: TetrationMode,
-    ) -> Decimal {
+    pub fn iteratedlog(&self, base: Decimal, mut times: f64, mode: TetrationMode) -> Decimal {
         if times < 0.0 {
             return base
-                .tetrate_internal(-times, *self, mode)
+                .checked_tetrate(-times, *self, mode)
                 .unwrap_or_else(|_| Decimal::nan_sentinel());
         }
 
@@ -190,9 +182,9 @@ impl Decimal {
 
         if fraction > 0.0 && fraction < 1.0 {
             if base == Decimal::from_finite(10.0) {
-                result = result.layer_add_10_internal(Decimal::from_finite(-fraction), mode);
+                result = result.layer_add_10(Decimal::from_finite(-fraction), mode);
             } else {
-                result = result.layer_add_internal(-fraction, base, mode);
+                result = result.layer_add(-fraction, base, mode);
             }
         }
 
@@ -204,8 +196,9 @@ impl Decimal {
         &self,
         base: Decimal,
         times: f64,
+        mode: TetrationMode,
     ) -> Result<Decimal, ArithmeticError> {
-        Ok(self.iteratedlog(base, times))
+        Ok(self.iteratedlog(base, times, mode))
     }
 
     /// Returns the super-logarithm of the Decimal.
@@ -242,7 +235,7 @@ impl Decimal {
 
         for i in 1..100 {
             let new_decimal = base
-                .tetrate_internal(result, one, mode)
+                .checked_tetrate(result, one, mode)
                 .unwrap_or_else(|_| Decimal::nan_sentinel());
 
             // If tetrate produced a non-finite sentinel, we've stepped into a
@@ -314,13 +307,12 @@ impl Decimal {
         Decimal::from_finite(result)
     }
 
-    /// Adds or removes layers from a Decimal using linear approximation.
-    pub fn layer_add_10(&self, diff: Decimal) -> Decimal {
-        self.layer_add_10_internal(diff, TetrationMode::Linear)
-    }
-
-    /// Layer-add base 10, mode-aware. Internal — slog refinement uses Analytic.
-    pub(crate) fn layer_add_10_internal(&self, diff: Decimal, mode: TetrationMode) -> Decimal {
+    /// Adds or removes layers from a Decimal.
+    ///
+    /// `mode` selects the fractional-residual algorithm: `Analytic` recurses
+    /// through [`layer_add`](Self::layer_add) to reach the JS-equivalent
+    /// critical-section path, `Linear` uses the inline closed-form math.
+    pub fn layer_add_10(&self, diff: Decimal, mode: TetrationMode) -> Decimal {
         let mut diff = diff.to_number();
         let mut result = *self;
 
@@ -425,7 +417,7 @@ impl Decimal {
                 }
                 result.normalize();
                 if diff != 0.0 {
-                    return result.layer_add_internal(diff, Decimal::from_finite(10.0), mode);
+                    return result.layer_add(diff, Decimal::from_finite(10.0), mode);
                 }
                 result
             }
@@ -433,23 +425,16 @@ impl Decimal {
     }
 
     /// Adds `diff` to the Decimal's slog(base) representation.
-    pub fn layer_add(&self, diff: f64, base: Decimal) -> Decimal {
-        self.layer_add_internal(diff, base, TetrationMode::Linear)
-    }
-
-    /// Layer-add, mode-aware. Internal — slog refinement uses Analytic.
-    pub(crate) fn layer_add_internal(
-        &self,
-        diff: f64,
-        base: Decimal,
-        mode: TetrationMode,
-    ) -> Decimal {
+    ///
+    /// `mode` propagates into the inner slog and tetrate calls. With
+    /// `Analytic`, the operation matches JS `layeradd(diff, base, false)`.
+    pub fn layer_add(&self, diff: f64, base: Decimal, mode: TetrationMode) -> Decimal {
         let slog_this = self.slog(Some(base), mode).to_number();
         let slog_dest = slog_this + diff;
 
         if slog_dest >= 0.0 {
             return base
-                .tetrate_internal(slog_dest, Decimal::one(), mode)
+                .checked_tetrate(slog_dest, Decimal::one(), mode)
                 .unwrap_or_else(|_| Decimal::nan_sentinel());
         }
 
@@ -459,12 +444,12 @@ impl Decimal {
 
         if slog_dest >= -1.0 {
             return base
-                .tetrate_internal(slog_dest + 1.0, Decimal::one(), mode)
+                .checked_tetrate(slog_dest + 1.0, Decimal::one(), mode)
                 .unwrap_or_else(|_| Decimal::nan_sentinel())
                 .log(base);
         }
 
-        base.tetrate_internal(slog_dest + 2.0, Decimal::one(), mode)
+        base.checked_tetrate(slog_dest + 2.0, Decimal::one(), mode)
             .unwrap_or_else(|_| Decimal::nan_sentinel())
             .log(base)
             .log(base)
@@ -503,14 +488,20 @@ impl Decimal {
     ///
     /// Panics if an inner [`tetrate`](Self::tetrate) is out of domain.
     /// Use [`checked_pentate`](Self::checked_pentate) for explicit error handling.
-    pub fn pentate(&self, height: Option<f64>, payload: Option<Decimal>) -> Decimal {
+    pub fn pentate(
+        &self,
+        height: Option<f64>,
+        payload: Option<Decimal>,
+        mode: TetrationMode,
+    ) -> Decimal {
         self.checked_pentate(
             height.unwrap_or(2.0),
             payload.unwrap_or_else(|| Decimal::from_components_unchecked(1, 0, 1.0)),
+            mode,
         )
         .unwrap_or_else(|e| {
             panic!(
-                "undefined Decimal pentate: {e} (base={self:?}, height={height:?}, payload={payload:?})"
+                "undefined Decimal pentate: {e} (base={self:?}, height={height:?}, payload={payload:?}, mode={mode:?})"
             )
         })
     }
@@ -520,6 +511,7 @@ impl Decimal {
         &self,
         mut height: f64,
         mut payload: Decimal,
+        mode: TetrationMode,
     ) -> Result<Decimal, ArithmeticError> {
         let old_height = height;
         height = height.trunc();
@@ -530,14 +522,14 @@ impl Decimal {
                 height += 1.0;
                 payload = Decimal::from_finite(fract_height);
             } else if *self == Decimal::from_finite(10.0) {
-                payload = payload.layer_add_10(Decimal::from_finite(fract_height));
+                payload = payload.layer_add_10(Decimal::from_finite(fract_height), mode);
             } else {
-                payload = payload.layer_add(fract_height, *self);
+                payload = payload.layer_add(fract_height, *self, mode);
             }
         }
 
         for i in 0..height as i64 {
-            payload = self.checked_tetrate(payload.to_number(), Decimal::one())?;
+            payload = self.checked_tetrate(payload.to_number(), Decimal::one(), mode)?;
             if !payload.mag.is_finite() {
                 return Ok(payload);
             }

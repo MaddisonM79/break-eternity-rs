@@ -240,12 +240,69 @@ fn slog_linear_round_trip_through_tetrate() {
         let x = Decimal::from_finite(n);
         let s = x.slog(None, TetrationMode::Linear).to_number();
         let back = Decimal::from_finite(10.0)
-            .tetrate(Some(s), Some(Decimal::from_finite(1.0)))
+            .tetrate(Some(s), Some(Decimal::from_finite(1.0)), TetrationMode::Linear)
             .to_number();
         let rel_err = ((back - n) / n).abs();
         assert!(
             rel_err < 1e-6,
             "linear round-trip: slog10({}) = {}, tetrate(10, {}) = {}, rel_err = {}",
+            n, s, s, back, rel_err
+        );
+    }
+}
+
+#[test]
+fn tetrate_analytic_matches_js_reference() {
+    // Fractional-height tetrate, analytic mode. JS values from
+    // break_eternity.js@2.1.3 (linear=false). Bases above 10 fall back to
+    // linear in JS too — these all use bases in [2, 10].
+    let cases: &[(f64, f64, f64)] = &[
+        (2.0, 2.5, 6.721399494148862),
+        (std::f64::consts::E, 2.5, 179.11551957319872),
+    ];
+    for &(base_f64, height, expected) in cases {
+        let base = Decimal::from_finite(base_f64);
+        let got = base.tetrate(Some(height), None, TetrationMode::Analytic).to_number();
+        let rel_err = (got - expected).abs() / expected;
+        assert!(
+            rel_err < 1e-10,
+            "tetrate({}, {}, Analytic) = {}, expected {}, rel_err = {}",
+            base_f64, height, got, expected, rel_err
+        );
+    }
+}
+
+#[test]
+fn tetrate_analytic_diverges_from_linear() {
+    // For fractional heights with base <= 10, analytic and linear should
+    // disagree by a measurable amount. This locks the wire-up — if a future
+    // refactor accidentally routes both modes through the same path, this
+    // test catches it.
+    let two = Decimal::from_finite(2.0);
+    let analytic = two.tetrate(Some(2.5), None, TetrationMode::Analytic).to_number();
+    let linear = two.tetrate(Some(2.5), None, TetrationMode::Linear).to_number();
+    assert!(
+        (analytic - linear).abs() > 0.01,
+        "tetrate(2, 2.5) analytic={} vs linear={} should differ noticeably",
+        analytic, linear
+    );
+}
+
+#[test]
+fn slog_analytic_round_trip_through_tetrate_analytic() {
+    // Issue #16 acceptance criterion: with both ops on Analytic, slog should
+    // invert tetrate to ~1e-8 precision. The slog refinement loop converges
+    // against the analytic tetrate (now both reachable publicly).
+    for &n in &[2.0_f64, 5.0, 10.0, 100.0, 1e6] {
+        let x = Decimal::from_finite(n);
+        let s = x.slog(None, TetrationMode::Analytic).to_number();
+        let back = Decimal::from_finite(10.0)
+            .tetrate(Some(s), Some(Decimal::from_finite(1.0)), TetrationMode::Analytic)
+            .to_number();
+        let rel_err = ((back - n) / n).abs();
+        assert!(
+            rel_err < 1e-8,
+            "analytic round-trip: slog10({}) = {}, tetrate(10, {}, analytic) = {}, rel_err = {}",
             n, s, s, back, rel_err
         );
     }
