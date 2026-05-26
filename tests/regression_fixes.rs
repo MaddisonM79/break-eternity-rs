@@ -3,7 +3,7 @@
 //! Each test locks one previously-buggy formula against a known-good value
 //! (most match the JS reference behavior; sqrt-of-tiny is a Rust-only improvement).
 
-use break_eternity::Decimal;
+use break_eternity::{Decimal, TetrationMode};
 use std::convert::TryFrom;
 
 #[test]
@@ -190,4 +190,63 @@ fn gamma_negative_threshold() {
 
     let r = Decimal::from_finite(-50.5).gamma().to_number();
     assert_eq!(r, 0.0, "gamma(-50.5) deliberately returns 0 (matches JS)");
+}
+
+#[test]
+fn slog_analytic_matches_js_reference() {
+    // Critical-section + refinement-loop slog. Values from break_eternity.js@2.1.3.
+    let cases: &[(&str, f64)] = &[
+        ("2", 0.3929124010088671),
+        ("100", 1.392912401008867),
+        ("1e308", 2.5021325804854673),
+        ("1e1000", 2.587852386325334),
+        ("ee100", 3.392912401008867),
+        ("1e1e15", 3.096027070908571),
+        ("(e^10)100", 11.392912401008866),
+    ];
+    for &(input, expected) in cases {
+        let x = Decimal::try_from(input).unwrap();
+        let got = x.slog(None, TetrationMode::Analytic).to_number();
+        assert!(
+            (got - expected).abs() < 1e-8,
+            "slog10({}) analytic = {}, expected {}, diff = {}",
+            input, got, expected, (got - expected).abs()
+        );
+    }
+}
+
+#[test]
+fn slog_linear_preserves_old_behavior() {
+    // Linear mode keeps the closed-form `result + copy - 1` approximation —
+    // the answers are coarser than analytic but stable, and useful when the
+    // caller knows the analytic surface isn't a good fit.
+    let two = Decimal::from_finite(2.0);
+    let linear = two.slog(None, TetrationMode::Linear).to_number();
+    // log10(2) is the linear-mode answer: slog_internal returns result+copy-1
+    // where for self=2: result=1, copy=log10(2), so 1 + log10(2) - 1 = log10(2).
+    assert!(
+        (linear - std::f64::consts::LOG10_2).abs() < 1e-12,
+        "slog10(2) linear = {}, expected ≈ log10(2)",
+        linear
+    );
+}
+
+#[test]
+fn slog_linear_round_trip_through_tetrate() {
+    // The public `tetrate` is linear; pair it with linear slog so the
+    // round-trip property holds. The analytic slog ↔ analytic tetrate
+    // round-trip will be tested once tetrate's analytic path is exposed.
+    for &n in &[2.0_f64, 5.0, 10.0, 100.0, 1e6] {
+        let x = Decimal::from_finite(n);
+        let s = x.slog(None, TetrationMode::Linear).to_number();
+        let back = Decimal::from_finite(10.0)
+            .tetrate(Some(s), Some(Decimal::from_finite(1.0)))
+            .to_number();
+        let rel_err = ((back - n) / n).abs();
+        assert!(
+            rel_err < 1e-6,
+            "linear round-trip: slog10({}) = {}, tetrate(10, {}) = {}, rel_err = {}",
+            n, s, s, back, rel_err
+        );
+    }
 }

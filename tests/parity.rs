@@ -158,7 +158,9 @@ fn js_parity() {
             "tetrate2" => run_unary(case, |a| {
                 a.checked_tetrate(2.0, Decimal::from_finite(1.0)).ok()
             }),
-            "slog10" => run_unary(case, |a| a.checked_slog(10.0).ok()),
+            "slog10" => run_unary(case, |a| {
+                a.checked_slog(10.0, break_eternity::TetrationMode::Analytic).ok()
+            }),
             "add" => run_binary(case, |a, b| a.checked_add(b).ok()),
             "sub" => run_binary(case, |a, b| a.checked_sub(b).ok()),
             "mul" => run_binary(case, |a, b| a.checked_mul(b).ok()),

@@ -20,6 +20,7 @@
 
 mod arithmetic;
 mod constants;
+mod critical_section;
 mod decimal;
 mod error;
 mod format;
@@ -44,4 +45,5 @@ pub use constants::{
 pub use decimal::Decimal;
 pub use error::{ArithmeticError, ArithmeticErrorKind, BreakEternityError};
 pub use format::{decimal_places, to_fixed};
+pub use tetration::TetrationMode;
 pub use utils::sign;
