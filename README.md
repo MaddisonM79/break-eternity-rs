@@ -43,7 +43,7 @@ All features are off by default. Enable them in `Cargo.toml`:
 
 ```toml
 [dependencies]
-break-eternity-rs = { version = "0.2", features = ["serde"] }
+break-eternity-rs = { version = "0.3", features = ["serde"] }
 ```
 
 | Flag | Adds | Notes |
