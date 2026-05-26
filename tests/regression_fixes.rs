@@ -379,7 +379,8 @@ fn iteratedlog_propagates_mode() {
     assert!(
         !a.approx_eq(&l, 1e-10),
         "iteratedlog(ee100, 10, 2.5) modes should diverge: analytic={:?}, linear={:?}",
-        a, l
+        a,
+        l
     );
 }
 
@@ -393,7 +394,8 @@ fn pentate_propagates_mode() {
     assert!(
         !a.approx_eq(&l, 1e-10),
         "pentate(2, 2.5) modes should diverge: analytic={:?}, linear={:?}",
-        a, l
+        a,
+        l
     );
 }
 
@@ -409,7 +411,8 @@ fn layer_add_propagates_mode() {
     assert!(
         !a.approx_eq(&l, 1e-10),
         "layer_add(100, 0.5, base=10) modes should diverge: analytic={:?}, linear={:?}",
-        a, l
+        a,
+        l
     );
 }
 
@@ -439,7 +442,8 @@ fn layer_add_10_sign_move_b() {
         assert!(
             (r - 0.001).abs() < 1e-12,
             "(-3).layer_add_10(1, {:?}) = {}, expected 0.001",
-            mode, r
+            mode,
+            r
         );
     }
 }
@@ -467,7 +471,12 @@ fn tetrate_positive_infinity_doesnt_panic() {
         Some(Decimal::from_finite(1.0)),
         TetrationMode::Analytic,
     );
-    assert_eq!(r, Decimal::inf(), "tetrate(2, +Inf) should be Inf, got {:?}", r);
+    assert_eq!(
+        r,
+        Decimal::inf(),
+        "tetrate(2, +Inf) should be Inf, got {:?}",
+        r
+    );
 
     // For base in the convergence zone, lambertw applies and returns a fixed point.
     let r = Decimal::from_finite(1.2).tetrate(
