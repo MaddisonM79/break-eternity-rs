@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-25
+
 ### Breaking
 
 - All tetration-family methods (`tetrate`, `checked_tetrate`, `iteratedexp`, `checked_iteratedexp`, `iteratedlog`, `checked_iteratedlog`, `layer_add`, `layer_add_10`, `pentate`, `checked_pentate`, `slog`, `checked_slog`) now take a `mode: TetrationMode` argument. `TetrationMode` is exported from the crate root. `TetrationMode::Analytic` (the default) matches `break_eternity.js`'s default critical-section interpolation; `TetrationMode::Linear` preserves the older closed-form approximation. Existing call sites must add the mode argument — typically `TetrationMode::Analytic` for JS-equivalent behavior.
