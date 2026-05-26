@@ -640,7 +640,17 @@ impl Decimal {
         }
 
         if self.layer == 1 {
-            return Decimal::from_components(1, 2, self.mag.log10() - std::f64::consts::LOG10_2);
+            // For positive mag the value is large (10^mag) and sqrt promotes to layer 2.
+            // For negative mag the value is tiny (10^mag, with mag < 0); sqrt(10^mag)
+            // = 10^(mag/2). Stay at layer 1 and let normalize() demote if needed.
+            if self.mag >= 0.0 {
+                return Decimal::from_components(
+                    1,
+                    2,
+                    self.mag.log10() - std::f64::consts::LOG10_2,
+                );
+            }
+            return Decimal::from_components(self.sign, 1, self.mag / 2.0);
         }
 
         let mut result = Decimal::from_components_unchecked(self.sign, self.layer - 1, self.mag)
@@ -786,8 +796,8 @@ impl Decimal {
             return Decimal::nan_sentinel();
         }
 
-        (*self + Decimal::from_finite(1.0))
-            / (Decimal::from_finite(1.0) - *self).ln()
+        // atanh(x) = ln((1+x)/(1-x)) / 2
+        ((*self + Decimal::from_finite(1.0)) / (Decimal::from_finite(1.0) - *self)).ln()
             / Decimal::from_finite(2.0)
     }
 }
