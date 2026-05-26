@@ -16,7 +16,8 @@ pub(crate) fn f_gamma(mut num: f64) -> f64 {
     }
 
     if num < -50.0 {
-        if (num - num.trunc()).abs() < COMPARE_EPSILON {
+        // Strict integer check matching JS `n === Math.trunc(n)`.
+        if num == num.trunc() {
             return f64::NEG_INFINITY;
         }
         return 0.0;
@@ -28,7 +29,7 @@ pub(crate) fn f_gamma(mut num: f64) -> f64 {
         num += 1.0;
     }
 
-    num += 1.0;
+    num -= 1.0;
     let mut l = 0.9189385332046727;
     l += (num + 0.5) * num.ln();
     l -= num;
@@ -36,19 +37,19 @@ pub(crate) fn f_gamma(mut num: f64) -> f64 {
     let mut num_p = num;
     l += 1.0 / (12.0 * num_p);
     num_p *= num2;
-    l += 1.0 / (360.0 * num_p);
+    l -= 1.0 / (360.0 * num_p);
     num_p *= num2;
     l += 1.0 / (1260.0 * num_p);
     num_p *= num2;
-    l += 1.0 / (1680.0 * num_p);
+    l -= 1.0 / (1680.0 * num_p);
     num_p *= num2;
     l += 1.0 / (1188.0 * num_p);
     num_p *= num2;
-    l += 691.0 / (360360.0 * num_p);
+    l -= 691.0 / (360360.0 * num_p);
     num_p *= num2;
     l += 7.0 / (1092.0 * num_p);
     num_p *= num2;
-    l += 3617.0 / (122400.0 * num_p);
+    l -= 3617.0 / (122400.0 * num_p);
 
     l.exp() / scal1
 }
@@ -359,6 +360,12 @@ impl Decimal {
 
     /// Returns the Decimal raised to the next power of 10.
     pub fn pow10(self) -> Decimal {
+        if self == Decimal::inf() {
+            return Decimal::inf();
+        }
+        if self == Decimal::neg_inf() {
+            return Decimal::zero();
+        }
         if !self.mag.is_finite() {
             return Decimal::nan_sentinel();
         }
@@ -367,7 +374,7 @@ impl Decimal {
 
         if a.layer == 0 {
             let new_mag = 10.0_f64.powf(a.sign as f64 * a.mag);
-            if new_mag.is_finite() && new_mag.abs() > 0.1 {
+            if new_mag.is_finite() && new_mag.abs() >= 0.1 {
                 return Decimal::from_components(1, 0, new_mag);
             }
             if a.sign == 0 {
@@ -376,11 +383,11 @@ impl Decimal {
             a = Decimal::from_components_unchecked(a.sign, a.layer + 1, a.mag.log10());
         }
 
-        if a.sign > 0 && a.mag > 0.0 {
+        if a.sign > 0 && a.mag >= 0.0 {
             return Decimal::from_components(a.sign, a.layer + 1, a.mag);
         }
 
-        if a.sign < 0 && a.mag > 0.0 {
+        if a.sign < 0 && a.mag >= 0.0 {
             return Decimal::from_components(-a.sign, a.layer + 1, -a.mag);
         }
 
@@ -409,7 +416,7 @@ impl Decimal {
             return Decimal::from_components(
                 1,
                 2,
-                self.sign as f64 * std::f64::consts::LOG10_E.log10() + self.mag,
+                self.sign as f64 * (std::f64::consts::LOG10_E.log10() + self.mag),
             );
         }
 
@@ -436,6 +443,15 @@ impl Decimal {
             let mut lm = 12.0 * np;
             let adj = 1.0 / lm;
             let l2 = l + adj;
+            if (l2 - l).abs() < COMPARE_EPSILON {
+                return Decimal::from_finite(l).exp();
+            }
+
+            l = l2;
+            np *= n2;
+            lm = 360.0 * np;
+            let adj = 1.0 / lm;
+            let l2 = l - adj;
             if (l2 - l).abs() < COMPARE_EPSILON {
                 return Decimal::from_finite(l).exp();
             }
@@ -475,7 +491,7 @@ impl Decimal {
         }
 
         if self.layer == 1 {
-            return (*self * self.ln() - Decimal::from_finite(1.0)).exp();
+            return (*self * (self.ln() - Decimal::from_finite(1.0))).exp();
         }
 
         self.exp()
