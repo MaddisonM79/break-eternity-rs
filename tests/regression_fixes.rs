@@ -37,7 +37,11 @@ fn exp_layer1_negative_is_tiny_positive() {
     // exp(-1e16) should be a tiny positive value (≈ 10^(-4.34e15)), stored
     // at layer 1 with negative mag and sign +1.
     let r = Decimal::from_components(-1, 1, 16.0).exp();
-    assert_eq!(r.sign(), 1, "exp of huge-negative should be positive (close to 0)");
+    assert_eq!(
+        r.sign(),
+        1,
+        "exp of huge-negative should be positive (close to 0)"
+    );
     assert_eq!(r.layer(), 1);
     assert!(
         r.mag() < 0.0,
@@ -52,21 +56,24 @@ fn atanh_matches_real_math() {
     let r = Decimal::from_finite(0.5).atanh();
     assert!(
         (r.to_number() - 0.5493061443340548).abs() < 1e-10,
-        "atanh(0.5) = {}", r
+        "atanh(0.5) = {}",
+        r
     );
 
     // atanh(-0.3) ≈ -0.30951960
     let r = Decimal::from_finite(-0.3).atanh();
     assert!(
         (r.to_number() - (-0.30951960420311186)).abs() < 1e-10,
-        "atanh(-0.3) = {}", r
+        "atanh(-0.3) = {}",
+        r
     );
 
     // atanh(0.9) ≈ 1.47221949
     let r = Decimal::from_finite(0.9).atanh();
     assert!(
         (r.to_number() - 1.4722194895832204).abs() < 1e-10,
-        "atanh(0.9) = {}", r
+        "atanh(0.9) = {}",
+        r
     );
 }
 
@@ -111,7 +118,11 @@ fn sqrt_of_tiny_layer1_value() {
     // sqrt(1e-20) = 1e-10; previously returned NaN at layer-1 with negative mag.
     let tiny = Decimal::from_finite(1.0) / Decimal::try_from("1e20").unwrap();
     let r = tiny.sqrt();
-    assert!(r.mag().is_finite(), "sqrt(1e-20) returned non-finite mag: {:?}", r);
+    assert!(
+        r.mag().is_finite(),
+        "sqrt(1e-20) returned non-finite mag: {:?}",
+        r
+    );
     assert!(
         (r.to_number() - 1e-10).abs() < 1e-20,
         "sqrt(1e-20) = {}, expected 1e-10",
@@ -136,7 +147,10 @@ fn gamma_large_layer0_path() {
         assert!(
             rel_err < 1e-12,
             "gamma({}) = {}, expected {}, rel_err = {}",
-            x, got, expected, rel_err
+            x,
+            got,
+            expected,
+            rel_err
         );
     }
 }
@@ -146,11 +160,19 @@ fn sqrt_huge_tiny_inputs() {
     // sqrt(10^-100) = 10^-50, sqrt(10^-1000) = 10^-500. Both stay at layer 1.
     let v = Decimal::try_from("1e-100").unwrap().sqrt();
     let expected = Decimal::try_from("1e-50").unwrap();
-    assert!(v.approx_eq(&expected, 1e-12), "sqrt(1e-100) = {}, expected 1e-50", v);
+    assert!(
+        v.approx_eq(&expected, 1e-12),
+        "sqrt(1e-100) = {}, expected 1e-50",
+        v
+    );
 
     let v = Decimal::try_from("1e-1000").unwrap().sqrt();
     let expected = Decimal::try_from("1e-500").unwrap();
-    assert!(v.approx_eq(&expected, 1e-12), "sqrt(1e-1000) = {}, expected 1e-500", v);
+    assert!(
+        v.approx_eq(&expected, 1e-12),
+        "sqrt(1e-1000) = {}, expected 1e-500",
+        v
+    );
 }
 
 #[test]
@@ -162,7 +184,9 @@ fn pow10_boundary_just_below() {
     let expected = 10.0_f64.powf(-1.0001);
     assert!(
         (r.to_number() - expected).abs() < 1e-12,
-        "10^-1.0001 = {}, expected {}", r, expected
+        "10^-1.0001 = {}, expected {}",
+        r,
+        expected
     );
 }
 
@@ -174,7 +198,11 @@ fn sub_huge_close_values_preserved() {
     let a = Decimal::from_components(1, 1, 100.0);
     let b = Decimal::from_components(1, 1, 99.99999999999);
     let r = a - b;
-    assert_ne!(r, Decimal::zero(), "10^100 - 10^99.99999999999 must not collapse to 0");
+    assert_ne!(
+        r,
+        Decimal::zero(),
+        "10^100 - 10^99.99999999999 must not collapse to 0"
+    );
     assert_eq!(r.sign(), 1, "result must be positive");
 }
 
@@ -210,7 +238,10 @@ fn slog_analytic_matches_js_reference() {
         assert!(
             (got - expected).abs() < 1e-8,
             "slog10({}) analytic = {}, expected {}, diff = {}",
-            input, got, expected, (got - expected).abs()
+            input,
+            got,
+            expected,
+            (got - expected).abs()
         );
     }
 }
@@ -240,13 +271,21 @@ fn slog_linear_round_trip_through_tetrate() {
         let x = Decimal::from_finite(n);
         let s = x.slog(None, TetrationMode::Linear).to_number();
         let back = Decimal::from_finite(10.0)
-            .tetrate(Some(s), Some(Decimal::from_finite(1.0)), TetrationMode::Linear)
+            .tetrate(
+                Some(s),
+                Some(Decimal::from_finite(1.0)),
+                TetrationMode::Linear,
+            )
             .to_number();
         let rel_err = ((back - n) / n).abs();
         assert!(
             rel_err < 1e-6,
             "linear round-trip: slog10({}) = {}, tetrate(10, {}) = {}, rel_err = {}",
-            n, s, s, back, rel_err
+            n,
+            s,
+            s,
+            back,
+            rel_err
         );
     }
 }
@@ -262,12 +301,18 @@ fn tetrate_analytic_matches_js_reference() {
     ];
     for &(base_f64, height, expected) in cases {
         let base = Decimal::from_finite(base_f64);
-        let got = base.tetrate(Some(height), None, TetrationMode::Analytic).to_number();
+        let got = base
+            .tetrate(Some(height), None, TetrationMode::Analytic)
+            .to_number();
         let rel_err = (got - expected).abs() / expected;
         assert!(
             rel_err < 1e-10,
             "tetrate({}, {}, Analytic) = {}, expected {}, rel_err = {}",
-            base_f64, height, got, expected, rel_err
+            base_f64,
+            height,
+            got,
+            expected,
+            rel_err
         );
     }
 }
@@ -279,12 +324,17 @@ fn tetrate_analytic_diverges_from_linear() {
     // refactor accidentally routes both modes through the same path, this
     // test catches it.
     let two = Decimal::from_finite(2.0);
-    let analytic = two.tetrate(Some(2.5), None, TetrationMode::Analytic).to_number();
-    let linear = two.tetrate(Some(2.5), None, TetrationMode::Linear).to_number();
+    let analytic = two
+        .tetrate(Some(2.5), None, TetrationMode::Analytic)
+        .to_number();
+    let linear = two
+        .tetrate(Some(2.5), None, TetrationMode::Linear)
+        .to_number();
     assert!(
         (analytic - linear).abs() > 0.01,
         "tetrate(2, 2.5) analytic={} vs linear={} should differ noticeably",
-        analytic, linear
+        analytic,
+        linear
     );
 }
 
@@ -297,13 +347,21 @@ fn slog_analytic_round_trip_through_tetrate_analytic() {
         let x = Decimal::from_finite(n);
         let s = x.slog(None, TetrationMode::Analytic).to_number();
         let back = Decimal::from_finite(10.0)
-            .tetrate(Some(s), Some(Decimal::from_finite(1.0)), TetrationMode::Analytic)
+            .tetrate(
+                Some(s),
+                Some(Decimal::from_finite(1.0)),
+                TetrationMode::Analytic,
+            )
             .to_number();
         let rel_err = ((back - n) / n).abs();
         assert!(
             rel_err < 1e-8,
             "analytic round-trip: slog10({}) = {}, tetrate(10, {}, analytic) = {}, rel_err = {}",
-            n, s, s, back, rel_err
+            n,
+            s,
+            s,
+            back,
+            rel_err
         );
     }
 }

@@ -46,8 +46,11 @@ impl TryFrom<&str> for Decimal {
                 }
             }
             if base.is_finite() && height.is_finite() {
-                return Ok(Decimal::from_finite(base)
-                    .pentate(Some(height), Some(Decimal::from_finite(payload)), TetrationMode::Analytic));
+                return Ok(Decimal::from_finite(base).pentate(
+                    Some(height),
+                    Some(Decimal::from_finite(payload)),
+                    TetrationMode::Analytic,
+                ));
             }
         }
 
@@ -67,8 +70,11 @@ impl TryFrom<&str> for Decimal {
                 }
             }
             if base.is_finite() && height.is_finite() {
-                return Ok(Decimal::from_finite(base)
-                    .tetrate(Some(height), Some(Decimal::from_finite(payload)), TetrationMode::Analytic));
+                return Ok(Decimal::from_finite(base).tetrate(
+                    Some(height),
+                    Some(Decimal::from_finite(payload)),
+                    TetrationMode::Analytic,
+                ));
             }
         }
 
@@ -104,8 +110,11 @@ impl TryFrom<&str> for Decimal {
                     payload = 1.0;
                 }
                 if height.is_finite() {
-                    return Ok(Decimal::from_finite(base)
-                        .tetrate(Some(height), Some(Decimal::from_finite(payload)), TetrationMode::Analytic));
+                    return Ok(Decimal::from_finite(base).tetrate(
+                        Some(height),
+                        Some(Decimal::from_finite(payload)),
+                        TetrationMode::Analytic,
+                    ));
                 }
             }
         }
@@ -124,8 +133,11 @@ impl TryFrom<&str> for Decimal {
                     payload = 1.0;
                 }
                 if height.is_finite() {
-                    return Ok(Decimal::from_finite(base)
-                        .tetrate(Some(height), Some(Decimal::from_finite(payload)), TetrationMode::Analytic));
+                    return Ok(Decimal::from_finite(base).tetrate(
+                        Some(height),
+                        Some(Decimal::from_finite(payload)),
+                        TetrationMode::Analytic,
+                    ));
                 }
             }
         }

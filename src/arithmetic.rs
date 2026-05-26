@@ -75,10 +75,7 @@ fn add_impl(lhs: Decimal, rhs: Decimal) -> Decimal {
         return lhs;
     }
 
-    if lhs.sign == -(rhs.sign)
-        && lhs.layer == rhs.layer
-        && lhs.mag == rhs.mag
-    {
+    if lhs.sign == -(rhs.sign) && lhs.layer == rhs.layer && lhs.mag == rhs.mag {
         return Decimal::zero();
     }
 

@@ -644,7 +644,11 @@ impl Decimal {
             // For negative mag the value is tiny (10^mag, with mag < 0); sqrt(10^mag)
             // = 10^(mag/2). Stay at layer 1 and let normalize() demote if needed.
             if self.mag >= 0.0 {
-                return Decimal::from_components(1, 2, self.mag.log10() - std::f64::consts::LOG10_2);
+                return Decimal::from_components(
+                    1,
+                    2,
+                    self.mag.log10() - std::f64::consts::LOG10_2,
+                );
             }
             return Decimal::from_components(self.sign, 1, self.mag / 2.0);
         }
@@ -793,8 +797,7 @@ impl Decimal {
         }
 
         // atanh(x) = ln((1+x)/(1-x)) / 2
-        ((*self + Decimal::from_finite(1.0)) / (Decimal::from_finite(1.0) - *self))
-            .ln()
+        ((*self + Decimal::from_finite(1.0)) / (Decimal::from_finite(1.0) - *self)).ln()
             / Decimal::from_finite(2.0)
     }
 }
