@@ -523,7 +523,10 @@ mod tests {
         let d = Decimal::from_finite(-2.5);
         let s = d.to_string();
         let d2 = Decimal::from_string(&s).unwrap();
-        assert!(approx_eq(d, d2), "round-trip failed: {d:?} -> {s:?} -> {d2:?}");
+        assert!(
+            approx_eq(d, d2),
+            "round-trip failed: {d:?} -> {s:?} -> {d2:?}"
+        );
     }
 
     #[test]
@@ -531,7 +534,10 @@ mod tests {
         let d = Decimal::from_mantissa_exponent(1.234, 400.0);
         let s = d.to_string();
         let d2 = Decimal::from_string(&s).unwrap();
-        assert!(approx_eq(d, d2), "round-trip failed: {d:?} -> {s:?} -> {d2:?}");
+        assert!(
+            approx_eq(d, d2),
+            "round-trip failed: {d:?} -> {s:?} -> {d2:?}"
+        );
     }
 
     #[test]
@@ -541,7 +547,10 @@ mod tests {
         assert!(d.layer() >= 2, "expected layer >= 2, got {}", d.layer());
         let s = d.to_string();
         let d2 = Decimal::from_string(&s).unwrap();
-        assert!(approx_eq(d, d2), "round-trip failed: {d:?} -> {s:?} -> {d2:?}");
+        assert!(
+            approx_eq(d, d2),
+            "round-trip failed: {d:?} -> {s:?} -> {d2:?}"
+        );
     }
 
     #[test]
@@ -552,7 +561,10 @@ mod tests {
         let s = d.to_string();
         assert!(s.starts_with("eeeee"), "unexpected Display: {s}");
         let d2 = Decimal::from_string(&s).unwrap();
-        assert!(approx_eq(d, d2), "round-trip failed: {d:?} -> {s:?} -> {d2:?}");
+        assert!(
+            approx_eq(d, d2),
+            "round-trip failed: {d:?} -> {s:?} -> {d2:?}"
+        );
     }
 
     #[test]
@@ -563,7 +575,10 @@ mod tests {
         let s = d.to_string();
         assert!(s.starts_with("(e^100)"), "unexpected Display: {s}");
         let d2 = Decimal::from_string(&s).unwrap();
-        assert!(approx_eq(d, d2), "round-trip failed: {d:?} -> {s:?} -> {d2:?}");
+        assert!(
+            approx_eq(d, d2),
+            "round-trip failed: {d:?} -> {s:?} -> {d2:?}"
+        );
     }
 
     #[test]
