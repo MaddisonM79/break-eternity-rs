@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-03
+
+### Added
+
+- `Decimal::from_string(&str) -> Result<Decimal, BreakEternityError>` as the canonical method-style entry point for string parsing.
+- `impl FromStr for Decimal`, enabling `"…".parse::<Decimal>()` and the standard `str::FromStr` workflow.
+
+These join the existing `TryFrom<&str>` impl; all three delegate to the same parser, which mirrors `fromStringInternal` from `break_eternity.js` (plain, scientific past f64 range, `eN`/`eeN`/`(e^N)M`, `10^N`/`10^^N`/`10^^^N`, `pt`/`p` tetrate shorthands, `Infinity`/`-Infinity`).
+
 ## [0.3.0] - 2026-05-25
 
 ### Breaking

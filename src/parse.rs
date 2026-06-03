@@ -1,6 +1,11 @@
-//! `TryFrom<&str>` implementation for [`Decimal`].
+//! String parsing for [`Decimal`].
+//!
+//! Provides three equivalent entry points: [`Decimal::from_string`], the
+//! [`TryFrom<&str>`] impl, and the [`std::str::FromStr`] impl. Together these
+//! cover ports of `fromStringInternal` from `break_eternity.js`.
 
 use std::convert::TryFrom;
+use std::str::FromStr;
 
 use crate::constants::commas_are_decimal_points;
 use crate::constants::ignore_commas;
@@ -8,6 +13,52 @@ use crate::decimal::Decimal;
 use crate::error::BreakEternityError;
 use crate::tetration::TetrationMode;
 use crate::utils::f_maglog10;
+
+impl Decimal {
+    /// Parses a string into a [`Decimal`].
+    ///
+    /// Accepts the formats produced by [`Decimal`]'s [`Display`](std::fmt::Display) impl as
+    /// well as the additional notations recognized by `break_eternity.js`'s `fromStringInternal`:
+    ///
+    /// * Plain decimals: `"0"`, `"-5"`, `"3.14"`, `"1000000"`
+    /// * Scientific: `"1.23e45"`, `"1.23e+45"`, `"1.23e-45"`, `"1e1000"` (past `f64` range)
+    /// * Stacked exponents: `"eN"`, `"eeN"`, `"eeeN"`, …
+    /// * Power / tetrate / pentate operators: `"10^N"`, `"10^^N"`, `"10^^^N"`
+    /// * Parenthesized large layer: `"(e^N)M"` (the [`Display`](std::fmt::Display) form for very
+    ///   high layers)
+    /// * `pt`/`p` tetrate shorthands: `"NptM"`, `"NpM"`
+    /// * Specials: `"Infinity"`, `"-Infinity"`. `"NaN"` returns an error since NaN is not a
+    ///   representable [`Decimal`].
+    ///
+    /// Surrounding whitespace is trimmed. Malformed input returns
+    /// [`BreakEternityError::ParseError`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use break_eternity::Decimal;
+    ///
+    /// let d = Decimal::from_string("1.23e45").unwrap();
+    /// assert!((d.mantissa() - 1.23).abs() < 1e-12);
+    /// assert_eq!(d.exponent(), 45.0);
+    ///
+    /// // Round-trip with Display
+    /// let s = d.to_string();
+    /// let d2 = Decimal::from_string(&s).unwrap();
+    /// assert_eq!(d, d2);
+    /// ```
+    pub fn from_string(s: &str) -> Result<Decimal, BreakEternityError> {
+        Decimal::try_from(s)
+    }
+}
+
+impl FromStr for Decimal {
+    type Err = BreakEternityError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Decimal::try_from(s)
+    }
+}
 
 /// Parses a `&str` slice as an `f64`, mapping parse errors into [`BreakEternityError::ParseError`].
 fn parse_f64(s: &str, orig: &str) -> Result<f64, BreakEternityError> {
@@ -369,5 +420,165 @@ mod tests {
         } else {
             panic!("expected ParseError");
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // from_string / FromStr coverage
+    // -----------------------------------------------------------------------
+
+    /// Approximate equality used by round-trip tests. Display is lossy at
+    /// layers where mantissa/exponent are recomputed (layer 0 large, layer 1).
+    fn approx_eq(a: Decimal, b: Decimal) -> bool {
+        if a == b {
+            return true;
+        }
+        if a.sign() != b.sign() || a.layer() != b.layer() {
+            return false;
+        }
+        let am = a.mag();
+        let bm = b.mag();
+        if am == bm {
+            return true;
+        }
+        let scale = am.abs().max(bm.abs()).max(1.0);
+        (am - bm).abs() / scale < 1e-12
+    }
+
+    #[test]
+    fn from_string_simple() {
+        let d = Decimal::from_string("12345").unwrap();
+        assert_eq!(d.exponent(), 4.0);
+        assert!((d.mantissa() - 1.2345).abs() < 1e-12);
+    }
+
+    #[test]
+    fn from_string_negative() {
+        let d = Decimal::from_string("-5").unwrap();
+        assert_eq!(d.to_number(), -5.0);
+    }
+
+    #[test]
+    fn from_string_scientific() {
+        let d = Decimal::from_string("1.23e45").unwrap();
+        assert_eq!(d.exponent(), 45.0);
+        assert!((d.mantissa() - 1.23).abs() < 1e-12);
+    }
+
+    #[test]
+    fn from_string_scientific_signs() {
+        let positive = Decimal::from_string("1.23e+45").unwrap();
+        let negative_exp = Decimal::from_string("1.23e-45").unwrap();
+        assert_eq!(positive.exponent(), 45.0);
+        assert_eq!(negative_exp.exponent(), -45.0);
+    }
+
+    #[test]
+    fn from_string_beyond_f64_range() {
+        // 1e1000 overflows f64 but fits comfortably as a layer-1 Decimal.
+        let d = Decimal::from_string("1e1000").unwrap();
+        assert_eq!(d.exponent(), 1000.0);
+        assert_eq!(d.layer(), 1);
+        assert!(d.sign() > 0);
+    }
+
+    #[test]
+    fn from_string_whitespace_trimmed() {
+        let d = Decimal::from_string("  42  ").unwrap();
+        assert_eq!(d.to_number(), 42.0);
+    }
+
+    #[test]
+    fn from_string_garbage_errors() {
+        assert!(Decimal::from_string("garbage").is_err());
+    }
+
+    #[test]
+    fn fromstr_trait_works() {
+        let d: Decimal = "1.23e45".parse().unwrap();
+        assert_eq!(d.exponent(), 45.0);
+
+        // Specials via FromStr
+        assert_eq!("Infinity".parse::<Decimal>().unwrap(), Decimal::inf());
+        assert_eq!("-Infinity".parse::<Decimal>().unwrap(), Decimal::neg_inf());
+        assert!("NaN".parse::<Decimal>().is_err());
+        assert!("not a number".parse::<Decimal>().is_err());
+    }
+
+    #[test]
+    fn from_string_pow_notation() {
+        // "10^N" parses through the power branch.
+        let d = Decimal::from_string("10^50").unwrap();
+        assert_eq!(d.exponent(), 50.0);
+    }
+
+    #[test]
+    fn from_string_tetration_notation() {
+        // "10^^N" parses through the tetration branch.
+        let result = Decimal::from_string("10^^5");
+        assert!(result.is_ok(), "10^^5 should parse: {result:?}");
+    }
+
+    #[test]
+    fn round_trip_plain() {
+        let d = Decimal::from_finite(-2.5);
+        let s = d.to_string();
+        let d2 = Decimal::from_string(&s).unwrap();
+        assert!(approx_eq(d, d2), "round-trip failed: {d:?} -> {s:?} -> {d2:?}");
+    }
+
+    #[test]
+    fn round_trip_large_exponent() {
+        let d = Decimal::from_mantissa_exponent(1.234, 400.0);
+        let s = d.to_string();
+        let d2 = Decimal::from_string(&s).unwrap();
+        assert!(approx_eq(d, d2), "round-trip failed: {d:?} -> {s:?} -> {d2:?}");
+    }
+
+    #[test]
+    fn round_trip_layer_2() {
+        // mag past EXPONENT_LIMIT pushes into layer 2.
+        let d = Decimal::from_mantissa_exponent(1.5, 1e16);
+        assert!(d.layer() >= 2, "expected layer >= 2, got {}", d.layer());
+        let s = d.to_string();
+        let d2 = Decimal::from_string(&s).unwrap();
+        assert!(approx_eq(d, d2), "round-trip failed: {d:?} -> {s:?} -> {d2:?}");
+    }
+
+    #[test]
+    fn round_trip_eeeee_layer() {
+        // Force layer 5 directly so Display emits "eeeee<mag>".
+        let d = Decimal::from_components(1, 5, 1.234e7);
+        assert_eq!(d.layer(), 5);
+        let s = d.to_string();
+        assert!(s.starts_with("eeeee"), "unexpected Display: {s}");
+        let d2 = Decimal::from_string(&s).unwrap();
+        assert!(approx_eq(d, d2), "round-trip failed: {d:?} -> {s:?} -> {d2:?}");
+    }
+
+    #[test]
+    fn round_trip_parenthesized_layer() {
+        // Layer above MAX_ES_IN_A_ROW serializes as "(e^N)mag".
+        let d = Decimal::from_components(1, 100, 1.5e10);
+        assert_eq!(d.layer(), 100);
+        let s = d.to_string();
+        assert!(s.starts_with("(e^100)"), "unexpected Display: {s}");
+        let d2 = Decimal::from_string(&s).unwrap();
+        assert!(approx_eq(d, d2), "round-trip failed: {d:?} -> {s:?} -> {d2:?}");
+    }
+
+    #[test]
+    fn round_trip_specials() {
+        assert_eq!(
+            Decimal::from_string(&Decimal::inf().to_string()).unwrap(),
+            Decimal::inf()
+        );
+        assert_eq!(
+            Decimal::from_string(&Decimal::neg_inf().to_string()).unwrap(),
+            Decimal::neg_inf()
+        );
+        assert_eq!(
+            Decimal::from_string(&Decimal::zero().to_string()).unwrap(),
+            Decimal::zero()
+        );
     }
 }
