@@ -18,7 +18,8 @@ fn d(s: &str) -> JsDecimal {
 
 #[wasm_bindgen_test]
 fn constructs_and_formats() {
-    assert_eq!(d("1.5e100").js_to_string(), "1.5e100");
+    // Layer-1 values keep ~14 significant digits through Display; compare via to_fixed.
+    assert_eq!(d("1.5e100").to_fixed(1), "1.5e100");
     assert_eq!(JsDecimal::from_number(42.0).unwrap().js_to_string(), "42");
     assert!(JsDecimal::from_number(f64::NAN).is_err());
     assert!(JsDecimal::new("garbage").is_err());
@@ -31,12 +32,12 @@ fn constructs_and_formats() {
 fn arithmetic_and_errors() {
     let a = d("1e100");
     let b = d("2");
-    assert_eq!(a.mul(&b).unwrap().js_to_string(), "2e100");
-    assert_eq!(a.add(&a).unwrap().js_to_string(), "2e100");
+    assert_eq!(a.mul(&b).unwrap().to_fixed(0), "2e100");
+    assert_eq!(a.add(&a).unwrap().to_fixed(0), "2e100");
     assert!(a.div(&d("0")).is_err());
     assert!(d("-8").pow(&d("0.5")).is_err());
     assert_eq!(d("-8").cbrt().js_to_string(), "-2");
-    assert_eq!(d("2").pow(&d("10")).js_to_string(), "1024");
+    assert_eq!(d("2").pow(&d("10")).unwrap().js_to_string(), "1024");
     assert!(d("-1").ln().is_err());
     assert!(d("0").gamma().is_err());
 }

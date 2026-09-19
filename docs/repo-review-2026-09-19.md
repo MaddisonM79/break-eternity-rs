@@ -1,5 +1,10 @@
 # break-eternity-rs review: gaps, bugs, and drift
 
+> **Status (2026-09-20):** every item below was addressed in the 0.5.0 release on the
+> `develop` branch, except the `no_std` port and the `Decimal` size reduction, which were left
+> as future work. See `CHANGELOG.md` for the itemised list. This document is kept as the
+> record of what was found and why.
+
 Reviewed at `develop` @ `8055226` (v0.4.0, published 2026-06-03). Compared against
 `break_eternity.js` 2.1.3 (upstream `master` is identical to the 2.1.3 tag; nothing newer
 exists) and `cozyGalvinism/break-eternity` 0.2.0 (the fork parent).
