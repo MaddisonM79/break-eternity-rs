@@ -12,11 +12,6 @@ fn assert_approx(a: Decimal, b: Decimal) {
 #[test]
 fn decimal() {
     assert_eq!(Decimal::from_finite(0.0).to_string(), "0");
-    // The deprecated from_number still routes NaN to the internal sentinel which formats as "NaN"
-    #[allow(deprecated)]
-    {
-        assert_eq!(Decimal::from_number(f64::NAN).to_string(), "NaN");
-    }
     assert_eq!(Decimal::inf().to_string(), "Infinity");
     assert_eq!(Decimal::neg_inf().to_string(), "-Infinity");
 

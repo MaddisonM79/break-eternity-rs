@@ -33,6 +33,9 @@ pub const NUMBER_EXP_MIN: i32 = -324;
 /// Amount of Es that will be printed in a string representation of a Decimal.
 pub const MAX_ES_IN_A_ROW: u64 = 5;
 
+/// Convergence tolerance used by the Lambert W iterations.
+pub(crate) const LAMBERTW_TOLERANCE: f64 = 1e-10;
+
 /// Maximum number powers of 10 that will be cached.
 pub const MAX_POWERS_OF_TEN: usize = (NUMBER_EXP_MAX - NUMBER_EXP_MIN + 1) as usize;
 
@@ -47,6 +50,24 @@ pub const OMEGA: f64 = 0.5671432904097838;
 
 /// Relative tolerance used for Decimal equality comparisons.
 pub const COMPARE_EPSILON: f64 = 1e-10;
+
+/// Largest layer at which adding one to the layer is still a safe operation.
+///
+/// Mirrors `dLayerSafeMax` in `break_eternity.js`. Values whose layer would
+/// exceed this are treated as infinite by [`Decimal::normalize`](crate::Decimal::normalize).
+pub const MAX_SAFE_LAYER: i64 = 9_000_000_000_000_000;
+
+/// The layer value used by the canonical infinity representation.
+///
+/// Infinity is stored as `(±1, INFINITE_LAYER, f64::INFINITY)`, so that it orders
+/// above every finite value by layer alone.
+pub(crate) const INFINITE_LAYER: i64 = i64::MAX;
+
+/// `e^(1/e)`, the largest base whose infinite power tower converges.
+pub const TETRATION_CONVERGENCE_MAX: f64 = 1.444_667_861_009_766_2;
+
+/// `e^-e`, the smallest positive base whose infinite power tower converges.
+pub const TETRATION_CONVERGENCE_MIN: f64 = 0.065_988_035_845_312_54;
 
 // ---------------------------------------------------------------------------
 // OnceLock-backed lazy statics

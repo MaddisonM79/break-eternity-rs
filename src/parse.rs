@@ -1,8 +1,12 @@
 //! String parsing for [`Decimal`].
 //!
-//! Provides three equivalent entry points: [`Decimal::from_string`], the
-//! [`TryFrom<&str>`] impl, and the [`std::str::FromStr`] impl. Together these
-//! cover ports of `fromStringInternal` from `break_eternity.js`.
+//! Provides equivalent entry points: [`Decimal::from_string`], [`Decimal::from_string_with_mode`],
+//! the [`TryFrom<&str>`] impl, and the [`std::str::FromStr`] impl. Together these port
+//! `fromString` from `break_eternity.js` 2.1.3.
+//!
+//! The parser never panics. Malformed input returns [`BreakEternityError::ParseError`];
+//! syntactically valid input whose value is mathematically undefined (for example
+//! `"(-2)^^2.5"`) returns [`BreakEternityError::ParseUndefined`].
 
 use std::convert::TryFrom;
 use std::str::FromStr;
@@ -12,26 +16,29 @@ use crate::constants::ignore_commas;
 use crate::decimal::Decimal;
 use crate::error::BreakEternityError;
 use crate::tetration::TetrationMode;
-use crate::utils::f_maglog10;
+use crate::utils::{f_maglog10, sign};
 
 impl Decimal {
     /// Parses a string into a [`Decimal`].
     ///
     /// Accepts the formats produced by [`Decimal`]'s [`Display`](std::fmt::Display) impl as
-    /// well as the additional notations recognized by `break_eternity.js`'s `fromStringInternal`:
+    /// well as the additional notations recognized by `break_eternity.js`:
     ///
-    /// * Plain decimals: `"0"`, `"-5"`, `"3.14"`, `"1000000"`
-    /// * Scientific: `"1.23e45"`, `"1.23e+45"`, `"1.23e-45"`, `"1e1000"` (past `f64` range)
-    /// * Stacked exponents: `"eN"`, `"eeN"`, `"eeeN"`, …
-    /// * Power / tetrate / pentate operators: `"10^N"`, `"10^^N"`, `"10^^^N"`
+    /// * Plain decimals: `"0"`, `"-5"`, `"3.14"`, `"1,000,000"` (commas are ignored)
+    /// * Scientific: `"1.23e45"`, `"1.23e+45"`, `"1.23e-45"`, `"1e1000"` (past `f64` range),
+    ///   subnormal literals such as `"2.47e-324"`
+    /// * Stacked exponents: `"eN"` (`10^N`), `"eeN"`, `"eeeN"`, …, and `"MeXeY"` (`M·10^(XeY)`)
+    /// * Power / tetrate / pentate operators: `"X^Y"`, `"X^^N"`, `"X^^N;P"` (payload),
+    ///   `"X^^^N"`, `"X^^^N;P"`
     /// * Parenthesized large layer: `"(e^N)M"` (the [`Display`](std::fmt::Display) form for very
-    ///   high layers)
-    /// * `pt`/`p` tetrate shorthands: `"NptM"`, `"NpM"`
+    ///   high layers; negative or fractional `N` is interpreted as `10^^N` with payload `M`)
+    /// * Base-10 tetrate shorthands: `"N PT M"`, `"N PT (M)"`, `"NpM"`, and `"MfN"` / `"fN"`
     /// * Specials: `"Infinity"`, `"-Infinity"`. `"NaN"` returns an error since NaN is not a
     ///   representable [`Decimal`].
     ///
-    /// Surrounding whitespace is trimmed. Malformed input returns
-    /// [`BreakEternityError::ParseError`].
+    /// Surrounding whitespace is trimmed and letters are case-insensitive. Fractional tetration
+    /// heights use [`TetrationMode::Analytic`]; see
+    /// [`from_string_with_mode`](Self::from_string_with_mode) to choose.
     ///
     /// # Examples
     ///
@@ -48,7 +55,16 @@ impl Decimal {
     /// assert_eq!(d, d2);
     /// ```
     pub fn from_string(s: &str) -> Result<Decimal, BreakEternityError> {
-        Decimal::try_from(s)
+        parse(s, TetrationMode::Analytic)
+    }
+
+    /// Parses a string like [`from_string`](Self::from_string), using `mode` for any
+    /// fractional-height tetration the notation requires (`"10^^2.5"`, `"(e^1.5)5"`, …).
+    pub fn from_string_with_mode(
+        s: &str,
+        mode: TetrationMode,
+    ) -> Result<Decimal, BreakEternityError> {
+        parse(s, mode)
     }
 }
 
@@ -56,314 +72,307 @@ impl FromStr for Decimal {
     type Err = BreakEternityError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Decimal::try_from(s)
+        parse(s, TetrationMode::Analytic)
     }
-}
-
-/// Parses a `&str` slice as an `f64`, mapping parse errors into [`BreakEternityError::ParseError`].
-fn parse_f64(s: &str, orig: &str) -> Result<f64, BreakEternityError> {
-    s.parse::<f64>()
-        .map_err(|error| BreakEternityError::ParseError {
-            parsed: orig.to_string(),
-            error,
-        })
 }
 
 impl TryFrom<&str> for Decimal {
     type Error = BreakEternityError;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let mut value = s.to_string();
-        if ignore_commas() {
-            value = value.replace(',', "");
-        } else if commas_are_decimal_points() {
-            value = value.replace(',', ".");
-        }
-        let value = value.as_str();
+        parse(s, TetrationMode::Analytic)
+    }
+}
 
-        // -----------------------------------------------------------------------
-        // Pentate: "base^^^height" or "base^^^height;payload"
-        // -----------------------------------------------------------------------
-        let pentation_parts: Vec<&str> = value.split("^^^").collect();
-        if pentation_parts.len() == 2 {
-            let base = parse_f64(pentation_parts[0], s)?;
-            let height = parse_f64(pentation_parts[1], s)?;
-            let mut payload = 1.0;
-            let height_parts = pentation_parts[1].split(';').collect::<Vec<&str>>();
-            if height_parts.len() == 2 {
-                let p = parse_f64(height_parts[1], s)?;
-                if p.is_finite() {
-                    payload = p;
-                }
-            }
+impl TryFrom<String> for Decimal {
+    type Error = BreakEternityError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        parse(&s, TetrationMode::Analytic)
+    }
+}
+
+/// Parses a `&str` slice as an `f64`, mapping parse errors into [`BreakEternityError::ParseError`].
+fn parse_f64(s: &str, orig: &str) -> Result<f64, BreakEternityError> {
+    s.trim()
+        .parse::<f64>()
+        .map_err(|error| BreakEternityError::ParseError {
+            parsed: orig.to_string(),
+            error,
+        })
+}
+
+/// Lenient float parse in the spirit of JS `parseFloat`: `None` if the text is not a number.
+fn lenient_f64(s: &str) -> Option<f64> {
+    s.trim().parse::<f64>().ok()
+}
+
+fn parse_error(orig: &str) -> BreakEternityError {
+    BreakEternityError::ParseError {
+        parsed: orig.to_string(),
+        error: "!".parse::<f64>().unwrap_err(),
+    }
+}
+
+/// Maps the internal NaN sentinel to [`BreakEternityError::ParseUndefined`].
+fn finish(d: Decimal, orig: &str) -> Result<Decimal, BreakEternityError> {
+    if d.has_nan_mag() {
+        Err(BreakEternityError::ParseUndefined {
+            parsed: orig.to_string(),
+        })
+    } else {
+        Ok(d)
+    }
+}
+
+/// Strips parentheses and whitespace from a payload fragment and parses it, defaulting to 1.
+fn payload_or_one(s: &str) -> f64 {
+    let cleaned: String = s.chars().filter(|c| *c != '(' && *c != ')').collect();
+    match lenient_f64(&cleaned) {
+        Some(p) if p.is_finite() => p,
+        _ => 1.0,
+    }
+}
+
+/// Handles the `N PT M`, `NpM` shorthands: base-10 tetration with the height first.
+fn tetrate_shorthand(
+    height_part: &str,
+    payload_part: &str,
+    mode: TetrationMode,
+) -> Option<Decimal> {
+    let mut height_part = height_part.trim();
+    let mut negative = false;
+    if let Some(rest) = height_part.strip_prefix('-') {
+        negative = true;
+        height_part = rest;
+    }
+    let height = lenient_f64(height_part)?;
+    if !height.is_finite() {
+        return None;
+    }
+    let payload = payload_or_one(payload_part);
+    let mut result = Decimal::ten().tetrate_raw(height, Decimal::from_f64(payload), mode);
+    if negative {
+        result = -result;
+    }
+    Some(result)
+}
+
+fn parse(s: &str, mode: TetrationMode) -> Result<Decimal, BreakEternityError> {
+    let mut value = s.trim().to_string();
+    if ignore_commas() {
+        value = value.replace(',', "");
+    } else if commas_are_decimal_points() {
+        value = value.replace(',', ".");
+    }
+    let value = value.to_lowercase();
+    let value = value.as_str();
+
+    if value.is_empty() {
+        return Err(parse_error(s));
+    }
+
+    // -----------------------------------------------------------------------
+    // Specials
+    // -----------------------------------------------------------------------
+    match value {
+        "nan" | "+nan" | "-nan" => return Err(parse_error(s)),
+        "infinity" | "+infinity" | "inf" | "+inf" => return Ok(Decimal::inf()),
+        "-infinity" | "-inf" => return Ok(Decimal::neg_inf()),
+        _ => {}
+    }
+
+    // -----------------------------------------------------------------------
+    // Pentate: "base^^^height" or "base^^^height;payload"
+    // -----------------------------------------------------------------------
+    let pentation_parts: Vec<&str> = value.split("^^^").collect();
+    if pentation_parts.len() == 2 {
+        let base = lenient_f64(pentation_parts[0]);
+        let mut height_parts = pentation_parts[1].splitn(2, ';');
+        let height = height_parts.next().and_then(lenient_f64);
+        let payload = height_parts.next().map_or(1.0, payload_or_one);
+        if let (Some(base), Some(height)) = (base, height) {
             if base.is_finite() && height.is_finite() {
-                return Ok(Decimal::from_finite(base).pentate(
-                    Some(height),
-                    Some(Decimal::from_finite(payload)),
-                    TetrationMode::Analytic,
-                ));
+                let r =
+                    Decimal::from_f64(base).pentate_raw(height, Decimal::from_f64(payload), mode);
+                return finish(r, s);
             }
         }
+    }
 
-        // -----------------------------------------------------------------------
-        // Tetrate: "base^^height" or "base^^height;payload"
-        // -----------------------------------------------------------------------
-        let tetration_parts: Vec<&str> = value.split("^^").collect();
-        if tetration_parts.len() == 2 {
-            let base = parse_f64(tetration_parts[0], s)?;
-            let height = parse_f64(tetration_parts[1], s)?;
-            let mut payload = 1.0;
-            let height_parts = tetration_parts[1].split(';').collect::<Vec<&str>>();
-            if height_parts.len() == 2 {
-                let p = parse_f64(height_parts[1], s)?;
-                if p.is_finite() {
-                    payload = p;
-                }
-            }
+    // -----------------------------------------------------------------------
+    // Tetrate: "base^^height" or "base^^height;payload"
+    // -----------------------------------------------------------------------
+    let tetration_parts: Vec<&str> = value.split("^^").collect();
+    if tetration_parts.len() == 2 {
+        let base = lenient_f64(tetration_parts[0]);
+        let mut height_parts = tetration_parts[1].splitn(2, ';');
+        let height = height_parts.next().and_then(lenient_f64);
+        let payload = height_parts.next().map_or(1.0, payload_or_one);
+        if let (Some(base), Some(height)) = (base, height) {
             if base.is_finite() && height.is_finite() {
-                return Ok(Decimal::from_finite(base).tetrate(
-                    Some(height),
-                    Some(Decimal::from_finite(payload)),
-                    TetrationMode::Analytic,
-                ));
+                let r =
+                    Decimal::from_f64(base).tetrate_raw(height, Decimal::from_f64(payload), mode);
+                return finish(r, s);
             }
         }
+    }
 
-        // -----------------------------------------------------------------------
-        // Power: "base^exponent"
-        // Only applies when both parts parse as finite floats; otherwise fall through.
-        // -----------------------------------------------------------------------
-        let pow_parts = value.split('^').collect::<Vec<&str>>();
-        if pow_parts.len() == 2 {
-            if let (Ok(base), Ok(exponent)) =
-                (pow_parts[0].parse::<f64>(), pow_parts[1].parse::<f64>())
-            {
-                if base.is_finite() && exponent.is_finite() {
-                    return Ok(Decimal::from_finite(base).pow(Decimal::from_finite(exponent)));
-                }
-            }
-        }
-
-        let value = value.trim().to_lowercase();
-        let value = value.as_str();
-
-        // -----------------------------------------------------------------------
-        // "NpT(payload)" or "NptM" — tetrate shorthand.
-        // Only applies when the height part parses as a finite float.
-        // -----------------------------------------------------------------------
-        let pt_parts = value.split("pt").collect::<Vec<&str>>();
-        if pt_parts.len() == 2 {
-            if let Ok(height) = pt_parts[0].parse::<f64>() {
-                let base: f64 = 10.0;
-                let tmp = pt_parts[1].replace(['(', ')'], "");
-                let mut payload = tmp.parse::<f64>().unwrap_or(1.0);
-                if !payload.is_finite() {
-                    payload = 1.0;
-                }
-                if height.is_finite() {
-                    return Ok(Decimal::from_finite(base).tetrate(
-                        Some(height),
-                        Some(Decimal::from_finite(payload)),
-                        TetrationMode::Analytic,
-                    ));
-                }
-            }
-        }
-
-        // -----------------------------------------------------------------------
-        // "NpM" — another tetrate shorthand.
-        // Only applies when the height part parses as a finite float.
-        // -----------------------------------------------------------------------
-        let p_parts = value.split('p').collect::<Vec<&str>>();
-        if p_parts.len() == 2 {
-            if let Ok(height) = p_parts[0].parse::<f64>() {
-                let base: f64 = 10.0;
-                let tmp = p_parts[1].replace(['(', ')'], "");
-                let mut payload = tmp.parse::<f64>().unwrap_or(1.0);
-                if !payload.is_finite() {
-                    payload = 1.0;
-                }
-                if height.is_finite() {
-                    return Ok(Decimal::from_finite(base).tetrate(
-                        Some(height),
-                        Some(Decimal::from_finite(payload)),
-                        TetrationMode::Analytic,
-                    ));
-                }
-            }
-        }
-
-        // -----------------------------------------------------------------------
-        // Scientific notation with 'e'
-        // -----------------------------------------------------------------------
-        let e_parts = value.split('e').collect::<Vec<&str>>();
-        let e_count = e_parts.len() - 1;
-
-        if e_count == 0 {
-            let n = parse_f64(value, s)?;
-            if n.is_finite() {
-                return Ok(Decimal::default().set_from_number(n));
-            }
-            // Non-finite bare literals: accept "Infinity"/"-Infinity", reject "NaN".
-            let lower = value.trim();
-            if lower == "nan" {
-                // NaN is not a representable Decimal — return a parse error.
-                return Err(BreakEternityError::ParseError {
-                    parsed: s.to_string(),
-                    // Fabricate a ParseFloatError by parsing something truly invalid.
-                    error: "!nan".parse::<f64>().unwrap_err(),
-                });
-            }
-            if lower == "infinity" {
-                return Ok(Decimal::inf());
-            }
-            if lower == "-infinity" {
-                return Ok(Decimal::neg_inf());
-            }
-            // Any other non-finite result is also an error.
-            return Err(BreakEternityError::ParseError {
-                parsed: s.to_string(),
-                error: format!("!{lower}").parse::<f64>().unwrap_err(),
-            });
-        } else if e_count == 1 {
-            // Try to parse the whole string as a scientific-notation f64 (e.g. "1.5e10").
-            // If it doesn't parse, fall through to the more specialised handlers below.
-            if let Ok(n) = value.parse::<f64>() {
-                if n.is_finite() && n != 0.0 {
-                    return Ok(Decimal::default().set_from_number(n));
-                }
-            }
-        }
-
-        // -----------------------------------------------------------------------
-        // Multiple leading 'e' prefix: "eeeeeM" (layer = number of es, mag = M).
-        // This is the format produced by Display for layers 2..=MAX_ES_IN_A_ROW.
-        // -----------------------------------------------------------------------
-        if value.starts_with("ee") || value.strip_prefix('-').is_some_and(|v| v.starts_with("ee")) {
-            let (sign_char, rest) = if let Some(stripped) = value.strip_prefix('-') {
-                (-1i8, stripped)
-            } else {
-                (1i8, value)
-            };
-            // Count leading 'e's.
-            let layer = rest.bytes().take_while(|&b| b == b'e').count() as i64;
-            let mag_str = &rest[layer as usize..];
-            if let Ok(mag) = mag_str.parse::<f64>() {
-                let mut dec = Decimal::from_components_unchecked(sign_char, layer, mag);
-                dec.normalize();
-                return Ok(dec);
-            }
-        }
-
-        // -----------------------------------------------------------------------
-        // Parenthesized large-layer: "(e^N)M" or "-(e^N)M".
-        // This is the format produced by Display for layers > MAX_ES_IN_A_ROW.
-        // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // Power: "base^exponent" (only when both parts are finite floats)
+    // -----------------------------------------------------------------------
+    let pow_parts: Vec<&str> = value.split('^').collect();
+    if pow_parts.len() == 2 {
+        if let (Some(base), Some(exponent)) = (lenient_f64(pow_parts[0]), lenient_f64(pow_parts[1]))
         {
-            let (sign_char, rest) = if value.starts_with("-(e^") {
-                (-1i8, &value[1..])
+            if base.is_finite() && exponent.is_finite() {
+                let r = Decimal::from_f64(base).pow_raw(Decimal::from_f64(exponent));
+                return finish(r, s);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // "N PT M" / "N PT (M)" — base-10 tetrate shorthand.
+    // -----------------------------------------------------------------------
+    let pt_parts: Vec<&str> = value.split("pt").collect();
+    if pt_parts.len() == 2 {
+        if let Some(r) = tetrate_shorthand(pt_parts[0], pt_parts[1], mode) {
+            return finish(r, s);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // "NpM" — the same with a bare p.
+    // -----------------------------------------------------------------------
+    let p_parts: Vec<&str> = value.split('p').collect();
+    if p_parts.len() == 2 {
+        if let Some(r) = tetrate_shorthand(p_parts[0], p_parts[1], mode) {
+            return finish(r, s);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // "MfN" / "fN" — payload first, height after the f.
+    // -----------------------------------------------------------------------
+    let f_parts: Vec<&str> = value.split('f').collect();
+    if f_parts.len() == 2 {
+        let mut payload_part = f_parts[0].trim();
+        let mut negative = false;
+        if let Some(rest) = payload_part.strip_prefix('-') {
+            negative = true;
+            payload_part = rest;
+        }
+        let payload = payload_or_one(payload_part);
+        let height_cleaned: String = f_parts[1]
+            .chars()
+            .filter(|c| *c != '(' && *c != ')')
+            .collect();
+        if let Some(height) = lenient_f64(&height_cleaned) {
+            if height.is_finite() {
+                let mut r = Decimal::ten().tetrate_raw(height, Decimal::from_f64(payload), mode);
+                if negative {
+                    r = -r;
+                }
+                return finish(r, s);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Scientific notation with 'e'
+    // -----------------------------------------------------------------------
+    let e_parts: Vec<&str> = value.split('e').collect();
+    let e_count = e_parts.len() - 1;
+
+    if e_count == 0 {
+        let n = parse_f64(value, s)?;
+        if !n.is_finite() {
+            return Err(parse_error(s));
+        }
+        return Ok(Decimal::from_f64(n));
+    }
+
+    if e_count == 1 {
+        // Ordinary floats parse directly. Very small values ("2e-3000") round to zero and
+        // subnormals ("1e-310") lose precision, so those fall through to the string path.
+        if let Ok(n) = value.parse::<f64>() {
+            if n.is_finite() && n.abs() > 1e-307 {
+                return Ok(Decimal::from_f64(n));
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // "(e^N)X" and "-(e^N)X": the Display form for layers above MAX_ES_IN_A_ROW.
+    // Negative or fractional N is interpreted as 10^^N with payload X.
+    // -----------------------------------------------------------------------
+    let caret_parts: Vec<&str> = value.split("e^").collect();
+    if caret_parts.len() == 2 {
+        let negative = caret_parts[0].starts_with('-');
+        let tail = caret_parts[1];
+        let layer_end = tail
+            .char_indices()
+            .find(|(_, c)| !matches!(c, '+' | '-' | '.' | '/' | ',' | 'e' | '0'..='9'))
+            .map(|(i, c)| (i, c.len_utf8()));
+        if let Some((end, width)) = layer_end {
+            let layer_f = parse_f64(&tail[..end], s)?;
+            let mag = parse_f64(&tail[end + width..], s)?;
+            let mut r = if layer_f < 0.0 || layer_f.fract() != 0.0 {
+                Decimal::ten().tetrate_raw(layer_f, Decimal::from_f64(mag), mode)
             } else {
-                (1i8, value)
+                // `as i64` saturates; normalize turns anything past the safe range into inf.
+                Decimal::from_components(1, layer_f as i64, mag)
             };
-            if rest.starts_with("(e^") {
-                if let Some(close) = rest.find(')') {
-                    let layer_str = &rest[3..close]; // between "(e^" and ")"
-                    let mag_str = &rest[close + 1..];
-                    if let (Ok(layer_f), Ok(mag)) =
-                        (layer_str.parse::<f64>(), mag_str.parse::<f64>())
-                    {
-                        let mut dec =
-                            Decimal::from_components_unchecked(sign_char, layer_f as i64, mag);
-                        dec.normalize();
-                        return Ok(dec);
-                    }
-                }
+            if negative {
+                r = -r;
             }
+            return finish(r, s);
         }
+    }
 
-        // -----------------------------------------------------------------------
-        // "e^N" notation
-        // -----------------------------------------------------------------------
-        let new_parts = value.split("e^").collect::<Vec<&str>>();
-        if new_parts.len() == 2 {
-            let mut dec = Decimal {
-                sign: 1,
-                ..Default::default()
-            };
-            if new_parts[0].starts_with('-') {
-                dec.sign = -1;
-            }
+    // -----------------------------------------------------------------------
+    // "MeX", "eX", "eeX", "MeXeY", ... — mantissa followed by e-separated exponents.
+    // -----------------------------------------------------------------------
+    let mantissa_str = e_parts[0].trim();
+    let mantissa = match mantissa_str {
+        "" | "+" => None,
+        "-" => Some(-1.0_f64).filter(|_| false).or(None),
+        other => Some(parse_f64(other, s)?),
+    };
+    let explicit_sign: i8 = if mantissa_str == "-" { -1 } else { 1 };
 
-            let mut layer_string = String::new();
-            for (i, c) in new_parts[1].chars().enumerate() {
-                if c.is_numeric()
-                    || c == '+'
-                    || c == '-'
-                    || c == '.'
-                    || c == 'e'
-                    || c == ','
-                    || c == '/'
-                {
-                    layer_string.push(c);
-                } else {
-                    let layer = parse_f64(&layer_string, s)?;
-                    dec.layer = layer as i64;
-                    let mag = parse_f64(&new_parts[1][i + 1..], s)?;
-                    dec.mag = mag;
-                    dec.normalize();
-                    return Ok(dec);
-                }
-            }
-        }
+    if mantissa == Some(0.0) {
+        return Ok(Decimal::zero());
+    }
 
-        // -----------------------------------------------------------------------
-        // Multi-e: "MeNeP..." — mantissa followed by multiple e-separated exponents
-        // -----------------------------------------------------------------------
-        let mut dec = Decimal::default();
+    let mut exponent = parse_f64(e_parts[e_parts.len() - 1], s)?;
 
-        if e_count < 1 {
-            return Ok(dec);
-        }
-
-        let mantissa = parse_f64(e_parts[0], s)?;
-        if mantissa == 0.0 {
-            return Ok(dec);
-        }
-
-        let exponent_str = e_parts.last().unwrap();
-        let mut exponent = parse_f64(exponent_str, s)?;
-
-        if e_count >= 2 {
-            let me = parse_f64(e_parts[e_parts.len() - 2], s)?;
+    // Numbers like AeBeC and AeeeeBeC.
+    if e_count >= 2 {
+        if let Some(me) = lenient_f64(e_parts[e_parts.len() - 2]) {
             if me.is_finite() {
-                exponent *= crate::utils::sign(me) as f64;
+                exponent *= sign(me) as f64;
                 exponent += f_maglog10(me);
             }
         }
-
-        if !mantissa.is_finite() {
-            dec.sign = if e_parts[0] == "-" { -1 } else { 1 };
-            dec.layer = e_count as i64;
-            dec.mag = exponent;
-        } else if e_count == 1 {
-            dec.sign = crate::utils::sign(mantissa);
-            dec.layer = 1;
-            dec.mag = exponent + mantissa.abs().log10();
-        } else {
-            dec.sign = crate::utils::sign(mantissa);
-            dec.layer = e_count as i64;
-            if e_count == 2 {
-                return Ok(
-                    Decimal::from_components(1, 2, exponent) * Decimal::from_finite(mantissa)
-                );
-            }
-            // mantissa is way too small at this level
-            dec.mag = exponent;
-        }
-
-        dec.normalize();
-        Ok(dec)
     }
+
+    let result = match mantissa {
+        // "eX", "eeX", ...: N es then the innermost exponent.
+        None => Decimal::from_components(explicit_sign, e_count as i64, exponent),
+        Some(m) if !m.is_finite() => return Err(parse_error(s)),
+        // "MeX": 10^(X + log10(M)).
+        Some(m) if e_count == 1 => Decimal::from_components(sign(m), 1, exponent + m.abs().log10()),
+        // "MeeX": M * 10^10^X.
+        Some(m) if e_count == 2 => {
+            Decimal::from_components(1, 2, exponent).mul_raw(Decimal::from_f64(m))
+        }
+        // At eee and above the mantissa is too small to be recognizable.
+        Some(m) => Decimal::from_components(sign(m), e_count as i64, exponent),
+    };
+
+    finish(result, s)
 }
 
 #[cfg(test)]
@@ -372,43 +381,113 @@ mod tests {
 
     use super::*;
 
+    fn p(s: &str) -> Decimal {
+        Decimal::try_from(s).unwrap_or_else(|e| panic!("failed to parse {s:?}: {e}"))
+    }
+
     #[test]
     fn parse_simple_number() {
-        let d = Decimal::try_from("42").unwrap();
-        assert_eq!(d.to_number(), 42.0);
+        assert_eq!(p("42").to_number(), 42.0);
+        assert_eq!(p("  12  ").to_number(), 12.0);
+        assert_eq!(p("+5").to_number(), 5.0);
+        assert_eq!(p(".5").to_number(), 0.5);
+        assert_eq!(p("5.").to_number(), 5.0);
+        assert_eq!(p("1,000,000").to_number(), 1e6);
     }
 
     #[test]
     fn parse_scientific() {
-        let d = Decimal::try_from("1e5").unwrap();
-        assert!((d.to_number() - 1e5).abs() < 1.0);
+        assert!((p("1e5").to_number() - 1e5).abs() < 1.0);
+        assert_eq!(p("1E5"), p("1e5"));
+        assert_eq!(p("-1e5").to_number(), -1e5);
+        assert_eq!(p("1e1000").to_string(), "1e1000");
+        assert_eq!(p("1e-400").to_string(), "1e-400");
+        assert_eq!(p("0e5"), Decimal::zero());
+        // Subnormal literals keep their precision.
+        assert!((p("2.47e-324").mantissa() - 2.47).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parse_stacked_exponents() {
+        assert_eq!(p("e3").to_number(), 1000.0);
+        assert_eq!(p("-e3").to_number(), -1000.0);
+        assert_eq!(p("e-3").to_number(), 0.001);
+        assert_eq!(p("ee3").to_string(), "1e1000");
+        assert_eq!(p("eee3").to_string(), "ee1000");
+        assert_eq!(p("1e1e3").to_string(), "1e1000");
+        assert_eq!(p("e1e3").to_string(), "1e1000");
+        assert_eq!(
+            p("2ee3"),
+            Decimal::from_components(1, 2, 3.0) * Decimal::two()
+        );
+        assert!(p("eeeee12345000000").layer() >= 5);
+    }
+
+    #[test]
+    fn parse_operators() {
+        assert_eq!(p("10^3").to_number(), 1000.0);
+        assert_eq!(p("2^10").to_number(), 1024.0);
+        assert_eq!(p("2^^3").to_number(), 16.0);
+        assert_eq!(p("2^^2;3").to_number(), 256.0);
+        assert_eq!(p("2^^^2").to_number(), 4.0);
+        assert_eq!(p("2^^^2;2").to_number(), 65536.0);
+        assert_eq!(p("10^^3").to_string(), "1e10000000000");
+        assert!(Decimal::try_from("(-2)^^2.5").is_err());
+    }
+
+    #[test]
+    fn parse_tetrate_shorthands() {
+        assert_eq!(p("3pt2"), p("ee100"));
+        assert_eq!(p("3PT2"), p("ee100"));
+        assert_eq!(p("3 PT 2"), p("ee100"));
+        assert_eq!(p("3 PT (2)"), p("ee100"));
+        assert_eq!(p("3pt(2)"), p("ee100"));
+        assert_eq!(p("-3pt2"), -p("ee100"));
+        assert_eq!(p("2p3"), p("1e1000"));
+        assert_eq!(p("1PT3").to_number(), 1000.0);
+        assert_eq!(p("2f3"), p("ee100"));
+        assert_eq!(p("f2").to_number(), 1e10);
+    }
+
+    #[test]
+    fn parse_parenthesized_large_layer() {
+        let result = Decimal::try_from("(e^100)15000000000");
+        assert!(result.is_ok(), "failed to parse: {result:?}");
+        assert_eq!(p("(e^3)2"), p("ee100"));
+        assert_eq!(p("-(e^7)15.5").sign(), -1);
+        // Negative or fractional layers are tetration heights.
+        assert_eq!(
+            p("(e^-1)5"),
+            Decimal::ten().tetrate(Some(-1.0), Some(Decimal::from(5)), TetrationMode::Analytic)
+        );
+        assert_eq!(
+            p("(e^1.5)5"),
+            Decimal::ten().tetrate(Some(1.5), Some(Decimal::from(5)), TetrationMode::Analytic)
+        );
+        assert_eq!(p("(e^1e300)5"), Decimal::inf());
     }
 
     #[test]
     fn parse_infinity_strings() {
-        let d = Decimal::try_from("Infinity").unwrap();
-        assert_eq!(d, Decimal::inf());
-        let d2 = Decimal::try_from("-Infinity").unwrap();
-        assert_eq!(d2, Decimal::neg_inf());
+        assert_eq!(p("Infinity"), Decimal::inf());
+        assert_eq!(p("-Infinity"), Decimal::neg_inf());
+        assert_eq!(p("inf"), Decimal::inf());
+        assert_eq!(p("-inf"), Decimal::neg_inf());
     }
 
     #[test]
     fn parse_nan_returns_error() {
         assert!(Decimal::try_from("NaN").is_err());
+        assert!(Decimal::try_from("nan").is_err());
     }
 
     #[test]
-    fn parse_parenthesized_large_layer() {
-        // (e^100)15000000000 is the Display format for layer=100, mag=1.5e10
-        let result = Decimal::try_from("(e^100)15000000000");
-        assert!(result.is_ok(), "failed to parse: {result:?}");
-    }
-
-    #[test]
-    fn parse_multi_e_prefix() {
-        // eeeee<mag> is the Display format for layer=5
-        let result = Decimal::try_from("eeeee12345000000");
-        assert!(result.is_ok(), "failed to parse: {result:?}");
+    fn from_string_garbage_errors() {
+        for s in [
+            "", "abc", "1e", "e", "1_000", "1e5e", "--5", "(e^5", "1..2", "e^", "pt", "f",
+        ] {
+            assert!(Decimal::try_from(s).is_err(), "{s:?} should fail");
+        }
     }
 
     #[test]
@@ -422,178 +501,25 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // from_string / FromStr coverage
-    // -----------------------------------------------------------------------
-
-    /// Approximate equality used by round-trip tests. Display is lossy at
-    /// layers where mantissa/exponent are recomputed (layer 0 large, layer 1).
-    fn approx_eq(a: Decimal, b: Decimal) -> bool {
-        if a == b {
-            return true;
-        }
-        if a.sign() != b.sign() || a.layer() != b.layer() {
-            return false;
-        }
-        let am = a.mag();
-        let bm = b.mag();
-        if am == bm {
-            return true;
-        }
-        let scale = am.abs().max(bm.abs()).max(1.0);
-        (am - bm).abs() / scale < 1e-12
-    }
-
     #[test]
-    fn from_string_simple() {
-        let d = Decimal::from_string("12345").unwrap();
-        assert_eq!(d.exponent(), 4.0);
-        assert!((d.mantissa() - 1.2345).abs() < 1e-12);
-    }
-
-    #[test]
-    fn from_string_negative() {
-        let d = Decimal::from_string("-5").unwrap();
-        assert_eq!(d.to_number(), -5.0);
-    }
-
-    #[test]
-    fn from_string_scientific() {
-        let d = Decimal::from_string("1.23e45").unwrap();
-        assert_eq!(d.exponent(), 45.0);
-        assert!((d.mantissa() - 1.23).abs() < 1e-12);
-    }
-
-    #[test]
-    fn from_string_scientific_signs() {
-        let positive = Decimal::from_string("1.23e+45").unwrap();
-        let negative_exp = Decimal::from_string("1.23e-45").unwrap();
-        assert_eq!(positive.exponent(), 45.0);
-        assert_eq!(negative_exp.exponent(), -45.0);
-    }
-
-    #[test]
-    fn from_string_beyond_f64_range() {
-        // 1e1000 overflows f64 but fits comfortably as a layer-1 Decimal.
-        let d = Decimal::from_string("1e1000").unwrap();
-        assert_eq!(d.exponent(), 1000.0);
-        assert_eq!(d.layer(), 1);
-        assert!(d.sign() > 0);
-    }
-
-    #[test]
-    fn from_string_whitespace_trimmed() {
-        let d = Decimal::from_string("  42  ").unwrap();
-        assert_eq!(d.to_number(), 42.0);
-    }
-
-    #[test]
-    fn from_string_garbage_errors() {
-        assert!(Decimal::from_string("garbage").is_err());
-    }
-
-    #[test]
-    fn fromstr_trait_works() {
-        let d: Decimal = "1.23e45".parse().unwrap();
-        assert_eq!(d.exponent(), 45.0);
-
-        // Specials via FromStr
-        assert_eq!("Infinity".parse::<Decimal>().unwrap(), Decimal::inf());
-        assert_eq!("-Infinity".parse::<Decimal>().unwrap(), Decimal::neg_inf());
-        assert!("NaN".parse::<Decimal>().is_err());
-        assert!("not a number".parse::<Decimal>().is_err());
-    }
-
-    #[test]
-    fn from_string_pow_notation() {
-        // "10^N" parses through the power branch.
-        let d = Decimal::from_string("10^50").unwrap();
-        assert_eq!(d.exponent(), 50.0);
-    }
-
-    #[test]
-    fn from_string_tetration_notation() {
-        // "10^^N" parses through the tetration branch.
-        let result = Decimal::from_string("10^^5");
-        assert!(result.is_ok(), "10^^5 should parse: {result:?}");
-    }
-
-    #[test]
-    fn round_trip_plain() {
-        let d = Decimal::from_finite(-2.5);
-        let s = d.to_string();
-        let d2 = Decimal::from_string(&s).unwrap();
-        assert!(
-            approx_eq(d, d2),
-            "round-trip failed: {d:?} -> {s:?} -> {d2:?}"
-        );
-    }
-
-    #[test]
-    fn round_trip_large_exponent() {
-        let d = Decimal::from_mantissa_exponent(1.234, 400.0);
-        let s = d.to_string();
-        let d2 = Decimal::from_string(&s).unwrap();
-        assert!(
-            approx_eq(d, d2),
-            "round-trip failed: {d:?} -> {s:?} -> {d2:?}"
-        );
-    }
-
-    #[test]
-    fn round_trip_layer_2() {
-        // mag past EXPONENT_LIMIT pushes into layer 2.
-        let d = Decimal::from_mantissa_exponent(1.5, 1e16);
-        assert!(d.layer() >= 2, "expected layer >= 2, got {}", d.layer());
-        let s = d.to_string();
-        let d2 = Decimal::from_string(&s).unwrap();
-        assert!(
-            approx_eq(d, d2),
-            "round-trip failed: {d:?} -> {s:?} -> {d2:?}"
-        );
-    }
-
-    #[test]
-    fn round_trip_eeeee_layer() {
-        // Force layer 5 directly so Display emits "eeeee<mag>".
-        let d = Decimal::from_components(1, 5, 1.234e7);
-        assert_eq!(d.layer(), 5);
-        let s = d.to_string();
-        assert!(s.starts_with("eeeee"), "unexpected Display: {s}");
-        let d2 = Decimal::from_string(&s).unwrap();
-        assert!(
-            approx_eq(d, d2),
-            "round-trip failed: {d:?} -> {s:?} -> {d2:?}"
-        );
-    }
-
-    #[test]
-    fn round_trip_parenthesized_layer() {
-        // Layer above MAX_ES_IN_A_ROW serializes as "(e^N)mag".
-        let d = Decimal::from_components(1, 100, 1.5e10);
-        assert_eq!(d.layer(), 100);
-        let s = d.to_string();
-        assert!(s.starts_with("(e^100)"), "unexpected Display: {s}");
-        let d2 = Decimal::from_string(&s).unwrap();
-        assert!(
-            approx_eq(d, d2),
-            "round-trip failed: {d:?} -> {s:?} -> {d2:?}"
-        );
-    }
-
-    #[test]
-    fn round_trip_specials() {
+    fn from_string_with_mode_threads_mode() {
+        let a = Decimal::from_string_with_mode("10^^2.5", TetrationMode::Analytic).unwrap();
+        let l = Decimal::from_string_with_mode("10^^2.5", TetrationMode::Linear).unwrap();
+        assert_ne!(a, l);
         assert_eq!(
-            Decimal::from_string(&Decimal::inf().to_string()).unwrap(),
-            Decimal::inf()
+            a,
+            Decimal::ten().tetrate(Some(2.5), None, TetrationMode::Analytic)
         );
         assert_eq!(
-            Decimal::from_string(&Decimal::neg_inf().to_string()).unwrap(),
-            Decimal::neg_inf()
+            l,
+            Decimal::ten().tetrate(Some(2.5), None, TetrationMode::Linear)
         );
-        assert_eq!(
-            Decimal::from_string(&Decimal::zero().to_string()).unwrap(),
-            Decimal::zero()
-        );
+    }
+
+    #[test]
+    fn non_ascii_does_not_panic() {
+        for s in ["(e^é)5", "５", "1e５", "ｅ5", "—5", "e^ü)3"] {
+            let _ = Decimal::try_from(s);
+        }
     }
 }

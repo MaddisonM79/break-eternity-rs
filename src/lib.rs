@@ -15,6 +15,7 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::unreadable_literal)]
 #![allow(clippy::return_self_not_must_use)]
+#![allow(clippy::doc_markdown)]
 #![crate_name = "break_eternity"]
 #![doc = include_str!("../README.md")]
 
@@ -24,26 +25,29 @@ mod critical_section;
 mod decimal;
 mod error;
 mod format;
-#[cfg(feature = "godot3")]
-mod gdnative_impl;
 #[cfg(feature = "godot4")]
 mod godot_impl;
 mod parse;
 #[cfg(feature = "serde")]
 mod serde_impl;
+mod series;
 mod tetration;
 mod transcendental;
+mod trig;
 mod utils;
 #[cfg(feature = "wasm")]
 mod wasm;
 
 pub use constants::{
     COMPARE_EPSILON, EXPN1, EXPONENT_LIMIT, FIRST_NEG_LAYER, LAYER_REDUCTION_THRESHOLD,
-    MAX_ES_IN_A_ROW, MAX_FLOAT_PRECISION, MAX_POWERS_OF_TEN, NUMBER_EXP_MAX, NUMBER_EXP_MIN, OMEGA,
-    TWO_PI,
+    MAX_ES_IN_A_ROW, MAX_FLOAT_PRECISION, MAX_POWERS_OF_TEN, MAX_SAFE_LAYER, NUMBER_EXP_MAX,
+    NUMBER_EXP_MIN, OMEGA, TETRATION_CONVERGENCE_MAX, TETRATION_CONVERGENCE_MIN, TWO_PI,
 };
 pub use decimal::Decimal;
 pub use error::{ArithmeticError, ArithmeticErrorKind, BreakEternityError};
 pub use format::{decimal_places, to_fixed};
-pub use tetration::TetrationMode;
+pub use tetration::{InverseSearch, TetrationMode};
+pub use transcendental::LambertBranch;
 pub use utils::sign;
+#[cfg(feature = "wasm")]
+pub use wasm::JsDecimal;

@@ -2,12 +2,12 @@
 
 ## Supported Versions
 
-`break-eternity-rs` is a pre-1.0 crate. Only the latest published `0.x` release receives security fixes. There is no LTS line.
+`break-eternity-rs` is a pre-1.0 crate. Only the latest published `0.x` minor release receives security fixes. There is no LTS line.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
-| < 0.1   | :x:                |
+| 0.5.x   | :white_check_mark: |
+| < 0.5   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -27,14 +27,21 @@ You can expect:
 
 ## Scope
 
-This policy covers vulnerabilities in the published `break-eternity-rs` crate. Out of scope:
+This policy covers vulnerabilities in the published `break-eternity-rs` crate. In scope:
+
+- Any panic reachable from `Decimal::from_string` / `FromStr` / `TryFrom<&str>` / the `serde` deserializer on attacker-controlled input (save files, network messages). The parser is contractually panic-free and is fuzzed in CI.
+- Unbounded CPU or memory consumption triggered by a short input string (for example a notation that expands to an extremely long formatting call).
+- Any `checked_*` method returning an internal NaN sentinel instead of an error.
+
+Out of scope:
 
 - Vulnerabilities in transitive dependencies (please report to the upstream crate).
 - Vulnerabilities in `break_eternity.js` (the original JavaScript library) — report those to [Patashu/break_eternity.js](https://github.com/Patashu/break_eternity.js).
-- Denial-of-service via maliciously crafted input to the `TryFrom<&str>` parser when used on **trusted** data. Save-file parsing of untrusted user-supplied save data **is** in scope; please report.
+- Panics from the documented panicking operator forms (`a / Decimal::zero()`, `(-8).pow(0.5)`, …) — use the `checked_*` forms for untrusted operands.
 - Numerical precision issues that do not have a security impact. File these as regular bug reports.
 
 ## Security Best Practices for Consumers
 
 - Keep dependencies up to date. Configure Dependabot or `cargo audit` in CI.
-- Treat `Decimal::try_from(&str)` input from untrusted sources (e.g., imported save files from other players) as adversarial; expect parse errors and bound iteration depth at the application layer if you accept very deeply tetrated expressions.
+- Prefer the `checked_*` methods for arithmetic on values derived from untrusted input.
+- Tetration and pentation are hyper-exponential: bound heights at the application layer if they come from user input, since `10^^1e6` is cheap to represent but `slog`/`penta_log` searches on adversarial values can take many iterations.
