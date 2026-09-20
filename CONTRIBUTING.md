@@ -1,6 +1,6 @@
 # Contributing to break-eternity-rs
 
-Thanks for taking the time to contribute! This document describes the workflow for filing issues, sending pull requests, and the local tooling expectations.
+Thanks for taking the time to contribute! This document describes the workflow for filing issues, sending pull requests, and the local tooling expectations. For how the crate is structured internally (the raw / checked / panicking layering, the NaN sentinel rules, and the parity policy) read [`docs/DESIGN.md`](docs/DESIGN.md) first.
 
 ## Reporting Bugs
 
@@ -78,7 +78,7 @@ Co-author trailers from AI tools (e.g., `Co-Authored-By: Claude`) **should not**
 ### What gets reviewed
 
 - **Correctness**: numeric ports of `break_eternity.js` functions should be checked against the JS reference behavior. Include test vectors when possible (the parity fixture is the easiest place).
-- **Soundness**: any change that affects `PartialEq` / `Eq` / `Hash` / `Ord` semantics on `Decimal` requires explicit contract tests. `checked_*` methods must never return the internal NaN sentinel; the panicking forms must never return it either.
+- **Soundness**: any change that affects `PartialEq` / `Eq` / `Hash` / `Ord` semantics on `Decimal` requires explicit contract tests. `checked_*` methods must never return the internal NaN sentinel; the panicking forms must never return it either. New operations go in the tables in `tests/contract.rs`, which enforces this mechanically.
 - **No panics on input**: the parser is fuzzed by proptest and must never panic on any string. Arithmetic on any two finite `Decimal`s must not panic except through the documented operator-overload convention.
 - **API surface**: new public items need rustdoc with at least one usage example. The crate is `#![warn(missing_docs)]`.
 - **No new `unsafe`** without a written justification.

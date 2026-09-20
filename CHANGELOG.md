@@ -111,6 +111,11 @@ divergences).
   family, gamma, Lambert W, tetration, `slog`, `ssqrt`, `pentate`, comparisons, clamping, and
   the game helpers, all throwing on undefined results. Tests in `tests/wasm.rs` run under
   `wasm-bindgen-test` in CI.
+- `tests/contract.rs`: property tests that every `checked_*` method never panics and never
+  returns NaN, every plain method panics exactly when its checked twin errs and otherwise
+  agrees with it, and every returned value is normalized and survives a `Display` round-trip.
+- `docs/DESIGN.md` describing the representation, the raw / checked / panicking layering, the
+  NaN-sentinel comparison rules, and the parity policy.
 - Criterion benchmarks (`cargo bench`) and two runnable examples (`idle_loop`, `formatting`).
 - CI: `wasm32` test job, `cargo semver-checks`, `cargo deny`, pinned action bumps; issue
   and PR templates; `CODEOWNERS`.

@@ -441,7 +441,7 @@ The crate is built and tested against `rustc 1.94` (Rust 2021 edition). The MSRV
 
 ## Contributing
 
-Bug reports, math improvements, and PRs are all welcome. The crate is parity-tested against [`break_eternity.js`](https://github.com/Patashu/break_eternity.js); reports of new failing cases — with a JS reference value to compare against — are especially appreciated. See [CONTRIBUTING.md](https://github.com/MaddisonM79/break-eternity-rs/blob/develop/CONTRIBUTING.md) for the workflow and how to regenerate the parity fixture.
+Bug reports, math improvements, and PRs are all welcome. The crate is parity-tested against [`break_eternity.js`](https://github.com/Patashu/break_eternity.js); reports of new failing cases — with a JS reference value to compare against — are especially appreciated. See [CONTRIBUTING.md](https://github.com/MaddisonM79/break-eternity-rs/blob/develop/CONTRIBUTING.md) for the workflow and how to regenerate the parity fixture, and [docs/DESIGN.md](https://github.com/MaddisonM79/break-eternity-rs/blob/develop/docs/DESIGN.md) for how the crate is structured.
 
 Issues and pull requests live at [github.com/MaddisonM79/break-eternity-rs](https://github.com/MaddisonM79/break-eternity-rs).
 
