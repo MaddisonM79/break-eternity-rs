@@ -25,6 +25,7 @@ name = "break_eternity"
 thiserror = { version = "2", default-features = false }
 libm = { version = "0.2", optional = true }
 serde = { version = "1", optional = true, default-features = false, features = ["alloc"] }
+proptest = { version = "1", optional = true, default-features = false, features = ["std"] }
 godot = { version = "0.5", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 js-sys = { version = "0.3", optional = true }
@@ -55,6 +56,8 @@ std = ["thiserror/std", "serde?/std"]
 libm = ["dep:libm"]
 # `Serialize` / `Deserialize` for `Decimal` (string form by default; see `serde_components`).
 serde = ["dep:serde"]
+# `proptest::Arbitrary` for `Decimal` and the strategies in `break_eternity::strategy`.
+proptest = ["std", "dep:proptest"]
 # Godot 4 via gdext.
 godot4 = ["std", "dep:godot"]
 # Exposes Decimal to JavaScript via wasm-bindgen.

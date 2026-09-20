@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (exact; `ArithmeticErrorKind::NotInteger` / `Overflow`), and `to_i32/u32/i64/u64/i128/u128/usize_saturating`.
 - `ArithmeticErrorKind` is now `#[non_exhaustive]` with two new variants, `Overflow` and
   `NotInteger`.
+- `proptest` feature: `Arbitrary for Decimal` with `DecimalParams` (zero / negative /
+  fractional / infinite / max layer) and the presets `finite_decimal`, `any_decimal`,
+  `positive_decimal`, `integer_decimal`, `layer0_decimal` in `break_eternity::strategy`.
 - `serde`: binary formats now get the `(sign, layer, mag)` components instead of a string
   (17 bytes in bincode, no parsing on load); human-readable formats keep the string.
   Deserializing from JSON also accepts plain numbers and `[sign, layer, mag]` arrays, and

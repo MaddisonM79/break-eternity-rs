@@ -52,7 +52,7 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo doc --no-deps --features serde,wasm
+      - run: cargo doc --no-deps --features serde,wasm,proptest
 
   test:
     name: test (${{ matrix.rust }} / ${{ matrix.os }})
@@ -72,6 +72,7 @@ jobs:
       # the wasm32 target); they are exercised in their own dedicated jobs.
       # The core test matrix runs against the default + serde features only.
       - run: cargo test --features serde
+      - run: cargo test --features proptest --test proptest_arbitrary
       - run: cargo test --no-default-features --features libm --lib
       - run: cargo build --examples
       - run: cargo run --example idle_loop

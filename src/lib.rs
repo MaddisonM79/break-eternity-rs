@@ -43,6 +43,8 @@ mod rounding;
 #[cfg(feature = "serde")]
 mod serde_impl;
 mod series;
+#[cfg(feature = "proptest")]
+pub mod strategy;
 mod tetration;
 mod transcendental;
 mod trig;

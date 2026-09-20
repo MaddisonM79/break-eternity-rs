@@ -54,6 +54,7 @@ break-eternity-rs = { version = "0.5", features = ["serde"] }
 | `libm` | Pure-Rust float math from [`libm`](https://crates.io/crates/libm) | Required when `std` is off. Ignored when `std` is on. |
 | `serde` | `Serialize` / `Deserialize` | String in human-readable formats, `(sign, layer, mag)` in binary ones; `serde_components` / `serde_string` adapters. Works without `std`. |
 | `godot4` | `GodotConvert` / `FromGodot` / `ToGodot` for [`godot`](https://crates.io/crates/godot) | Godot 4 / gdext. Round-trip via `GString`. |
+| `proptest` | `proptest::Arbitrary` for `Decimal`, presets in `break_eternity::strategy` | For property tests in your own crate; implies `std`. |
 | `wasm` | `JsDecimal` class via [`wasm-bindgen`](https://crates.io/crates/wasm-bindgen) | Exposes `Decimal` to JavaScript with a `break_eternity.js`-like method surface. |
 
 Godot 3 (`gdnative`) support was removed in 0.5.0.
