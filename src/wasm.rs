@@ -440,6 +440,29 @@ impl JsDecimal {
         self.0.approx_eq(&other.0, tolerance)
     }
 
+    /// The smallest representable value greater than this one.
+    #[wasm_bindgen(js_name = nextUp)]
+    pub fn next_up(&self) -> JsDecimal {
+        JsDecimal(self.0.next_up())
+    }
+
+    /// The largest representable value less than this one.
+    #[wasm_bindgen(js_name = nextDown)]
+    pub fn next_down(&self) -> JsDecimal {
+        JsDecimal(self.0.next_down())
+    }
+
+    /// The spacing of representable values at this magnitude.
+    pub fn ulp(&self) -> JsDecimal {
+        JsDecimal(self.0.ulp())
+    }
+
+    /// Whether a representable value lies strictly between the two; equal or adjacent values
+    /// cannot be told apart, and arithmetic between them is noise.
+    pub fn distinguishable(&self, other: &JsDecimal) -> bool {
+        self.0.distinguishable(&other.0)
+    }
+
     // -----------------------------------------------------------------------
     // Game helpers
     // -----------------------------------------------------------------------

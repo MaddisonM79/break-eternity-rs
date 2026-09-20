@@ -40,6 +40,8 @@ mod math;
 pub mod notation;
 mod parse;
 mod rounding;
+#[cfg(feature = "schemars")]
+mod schemars_impl;
 #[cfg(feature = "serde")]
 mod serde_impl;
 mod series;
@@ -63,6 +65,8 @@ pub use format::{decimal_places, to_fixed};
 #[cfg(feature = "godot4")]
 pub use godot_impl::GodotDecimal;
 pub use notation::{Notation, NotationDisplay};
+#[cfg(feature = "schemars")]
+pub use schemars_impl::DECIMAL_PATTERN;
 #[cfg(feature = "serde")]
 pub use serde_impl::{components as serde_components, string as serde_string};
 pub use tetration::{InverseSearch, TetrationMode};

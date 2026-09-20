@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-20
+
+### Added
+
+- `schemars` feature: `schemars::JsonSchema` for `Decimal` (implies `serde`). The schema is a
+  named `Decimal` definition: a string with a `pattern` covering every notation the parser
+  accepts, or, since loading is lenient, a plain number or a `[sign, layer, mag]` array. The
+  pattern is exported as `DECIMAL_PATTERN`.
+- `Decimal::next_up` / `next_down`: the adjacent representable values across the whole
+  `(sign, layer, mag)` lattice, crossing layer boundaries where normalization does.
+- `Decimal::ulp`: the spacing of representable values at a given magnitude (one `f64` ulp at
+  layer 0, `10^mag · (10^ulp(mag) − 1)` at layer 1, the successor from layer 2 up).
+- `Decimal::distinguishable`: true when at least one representable value lies strictly between
+  two Decimals. Equal or adjacent values are not distinguishable; this is the tolerance-free
+  check for the relative-precision hazard (a cost that cannot be told apart from the balance).
+  All four are also on `GodotDecimal` and `JsDecimal`.
+
+### Fixed
+
+- `afford_geometric_series` and `afford_arithmetic_series` are settled against their `sum_*`
+  counterparts, so `sum(n) <= resources < sum(n + 1)` holds for the returned `n`. The
+  closed-form inverse alone returned `n - 1` for a budget of exactly `sum(n)` in roughly half
+  of all exact-boundary cases (base `8e13`, ratio `2`, `n = 3` and `n = 7` among them).
+- `afford_geometric_series` with a ratio below 1 and a budget covering the whole series
+  (`start / (1 - ratio)`) returns infinity; it used to return `0` with a comment claiming the
+  budget was short.
+
 ## [0.5.1] - 2026-09-20
 
 The first published 0.5 release. `v0.5.0` was tagged but its release workflow failed before
@@ -366,7 +393,8 @@ These join the existing `TryFrom<&str>` impl; all three delegate to the same par
 - **Known issue (fixed in 0.2.0)**: published `repository` and `homepage` URLs link to a non-existent GitHub repo.
 - **Known issue (fixed in 0.2.0)**: published `authors` field exposed a personal email address.
 
-[Unreleased]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.3.0...v0.4.0

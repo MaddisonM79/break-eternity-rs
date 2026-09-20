@@ -700,6 +700,217 @@ impl Decimal {
     pub fn approx_ge(&self, other: &Decimal, tolerance: f64) -> bool {
         self.approx_eq(other, tolerance) || self > other
     }
+
+    // -----------------------------------------------------------------------
+    // Resolution
+    // -----------------------------------------------------------------------
+
+    /// Returns the smallest representable Decimal greater than `self`: [`f64::next_up`] over
+    /// the whole `(sign, layer, mag)` lattice.
+    ///
+    /// Within a layer this steps `mag` by one `f64` ulp; at the edges of a layer it crosses to
+    /// the neighbouring layer exactly where normalization would, so the result is always the
+    /// immediate successor in the crate's total order. Zero's successor is
+    /// [`layer_safe_min`](Self::layer_safe_min), the smallest positive value;
+    /// [`layer_safe_max`](Self::layer_safe_max) steps to infinity; infinity is its own successor.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use break_eternity::Decimal;
+    ///
+    /// let one = Decimal::one();
+    /// assert_eq!(one.next_up(), Decimal::from_finite(1.0 + f64::EPSILON));
+    /// assert_eq!(one.next_up().next_down(), one);
+    ///
+    /// // 9e15 is where layer 0 hands over to layer 1.
+    /// let last_layer0 = Decimal::from_finite(8_999_999_999_999_999.0);
+    /// assert_eq!(last_layer0.next_up(), Decimal::from_finite(9e15));
+    /// assert_eq!(last_layer0.next_up().layer(), 1);
+    /// ```
+    pub fn next_up(&self) -> Decimal {
+        match self.sign {
+            0 => Decimal::layer_safe_min(),
+            1 => self.step_away_from_zero(),
+            _ => -self.abs().step_toward_zero(),
+        }
+    }
+
+    /// Returns the largest representable Decimal less than `self`: the mirror of
+    /// [`next_up`](Self::next_up). Zero's predecessor is `-layer_safe_min()`, infinity's is
+    /// [`layer_safe_max`](Self::layer_safe_max), and negative infinity is its own predecessor.
+    pub fn next_down(&self) -> Decimal {
+        match self.sign {
+            0 => -Decimal::layer_safe_min(),
+            1 => self.step_toward_zero(),
+            _ => -self.abs().step_away_from_zero(),
+        }
+    }
+
+    /// Returns the spacing of representable values at `self`: the distance from `|self|` to the
+    /// next representable value of greater magnitude.
+    ///
+    /// * At layer 0 (`|self| < 9e15`) this is one `f64` ulp of the value: `1.ulp()` is
+    ///   `f64::EPSILON` and `2^52.ulp()` is `1`.
+    /// * At layer 1 (`10^mag`) it is `10^mag · (10^ulp(mag) − 1)`. The relative resolution
+    ///   grows with the exponent: about `1.5e-13` of the value at `1e300`, so the spacing there
+    ///   is `1.5e287`, and about `2e-6` of the value at `1e10000000`.
+    /// * From layer 2 up the spacing exceeds the value itself, so this returns the successor.
+    ///
+    /// Zero returns [`layer_safe_min`](Self::layer_safe_min) and infinity returns infinity. The
+    /// result is the same for `self` and `-self`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use break_eternity::Decimal;
+    ///
+    /// assert_eq!(Decimal::one().ulp(), Decimal::from_finite(f64::EPSILON));
+    /// assert_eq!(Decimal::from_finite(4503599627370496.0).ulp(), Decimal::one());
+    ///
+    /// let balance: Decimal = "1e300".parse().unwrap();
+    /// let spacing = balance.ulp();
+    /// assert!(spacing > "1e287".parse::<Decimal>().unwrap());
+    /// assert!(spacing < "2e287".parse::<Decimal>().unwrap());
+    /// // A cost below the spacing cannot register against the balance.
+    /// let cost: Decimal = "1e286".parse().unwrap();
+    /// assert!(cost < spacing);
+    /// assert_eq!(balance - cost, balance);
+    /// ```
+    pub fn ulp(&self) -> Decimal {
+        if self.sign == 0 {
+            return Decimal::layer_safe_min();
+        }
+        if self.is_infinite() {
+            return Decimal::inf();
+        }
+        match self.layer {
+            0 => Decimal::from_finite(self.mag.next_up() - self.mag),
+            1 => {
+                // 10^mag · (10^step − 1) with step one ulp of mag (an exact difference); in
+                // log form that is mag + log10(expm1(step · ln 10)), and expm1 keeps the full
+                // precision that 10^step − 1 would lose to cancellation.
+                let step = self.mag.next_up() - self.mag;
+                Decimal::from_components(
+                    1,
+                    1,
+                    self.mag + (step * core::f64::consts::LN_10).exp_m1().log10(),
+                )
+            }
+            _ => self.abs().next_up(),
+        }
+    }
+
+    /// Returns true if the representation can tell `self` and `other` apart: they differ, and
+    /// at least one representable value lies strictly between them.
+    ///
+    /// Equal values are not distinguishable, and neither are adjacent ones (`x` and
+    /// `x.next_up()`): they differ by a single rounding step, so the true quantities behind
+    /// them could sit on either side of each other and any arithmetic between them is noise.
+    /// This is the check for the relative-precision hazard of a layered representation. At
+    /// `1e300` the spacing is about `1e287`, so `1e300 + 1e286` *is* `1e300`, and
+    /// `1e300 + 1e287` is one step away from it. An economy that must not act on a
+    /// difference the numbers cannot carry can treat a cost that is indistinguishable from the
+    /// balance as unaffordable.
+    ///
+    /// Unlike [`approx_eq`](Self::approx_eq) there is no tolerance to choose: the threshold is
+    /// the representation's own resolution, which changes with layer and magnitude. For a wider
+    /// margin, compare the difference against a multiple of [`ulp`](Self::ulp).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use break_eternity::Decimal;
+    ///
+    /// let balance: Decimal = "1e300".parse().unwrap();
+    /// let close: Decimal = "1.0000000000001e300".parse().unwrap();
+    /// let clear: Decimal = "1.000000001e300".parse().unwrap();
+    ///
+    /// assert!(balance != close);
+    /// assert!(!balance.distinguishable(&close));
+    /// assert!(balance.distinguishable(&clear));
+    /// assert!(Decimal::one().distinguishable(&Decimal::two()));
+    /// assert!(!balance.distinguishable(&balance));
+    /// ```
+    pub fn distinguishable(&self, other: &Decimal) -> bool {
+        match self.cmp(other) {
+            Ordering::Equal => false,
+            Ordering::Less => self.next_up() != *other,
+            Ordering::Greater => other.next_up() != *self,
+        }
+    }
+
+    /// Successor of a positive value in the lattice.
+    ///
+    /// The lattice, in increasing order, is `(L, -9e15+1) … (L, -T)` for `L` from
+    /// `MAX_SAFE_LAYER` down to 1, then `(0, 1/9e15) … (0, 9e15-1)`, then `(L, T) … (L, 9e15-1)`
+    /// for `L` from 1 up, where `T` is [`LAYER_REDUCTION_THRESHOLD`] (`log10(9e15)`). Stepping
+    /// off the end of a block lands on the first entry of the next one, which is the value
+    /// normalization would produce for `mag == ±9e15`.
+    fn step_away_from_zero(self) -> Decimal {
+        if self.is_infinite() {
+            return self;
+        }
+        let Decimal { layer, mag, .. } = self;
+        if layer == 0 {
+            let up = mag.next_up();
+            return if up >= EXPONENT_LIMIT {
+                Decimal::from_components_unchecked(1, 1, LAYER_REDUCTION_THRESHOLD)
+            } else {
+                Decimal::from_components_unchecked(1, 0, up)
+            };
+        }
+        if mag > 0.0 {
+            let up = mag.next_up();
+            return if up < EXPONENT_LIMIT {
+                Decimal::from_components_unchecked(1, layer, up)
+            } else if layer >= MAX_SAFE_LAYER {
+                Decimal::inf()
+            } else {
+                Decimal::from_components_unchecked(1, layer + 1, LAYER_REDUCTION_THRESHOLD)
+            };
+        }
+        // Negative mag is a value below 1/9e15; a less negative mag is a larger value.
+        if mag == -LAYER_REDUCTION_THRESHOLD {
+            return if layer == 1 {
+                Decimal::from_components_unchecked(1, 0, FIRST_NEG_LAYER)
+            } else {
+                Decimal::from_components_unchecked(1, layer - 1, -EXPONENT_LIMIT.next_down())
+            };
+        }
+        Decimal::from_components_unchecked(1, layer, mag.next_up())
+    }
+
+    /// Predecessor of a positive value in the lattice; see
+    /// [`step_away_from_zero`](Self::step_away_from_zero).
+    fn step_toward_zero(self) -> Decimal {
+        if self.is_infinite() {
+            return Decimal::layer_safe_max();
+        }
+        let Decimal { layer, mag, .. } = self;
+        if layer == 0 {
+            return if mag == FIRST_NEG_LAYER {
+                Decimal::from_components_unchecked(1, 1, -LAYER_REDUCTION_THRESHOLD)
+            } else {
+                Decimal::from_components_unchecked(1, 0, mag.next_down())
+            };
+        }
+        if mag > 0.0 {
+            return if mag == LAYER_REDUCTION_THRESHOLD {
+                Decimal::from_components_unchecked(1, layer - 1, EXPONENT_LIMIT.next_down())
+            } else {
+                Decimal::from_components_unchecked(1, layer, mag.next_down())
+            };
+        }
+        let down = mag.next_down();
+        if down > -EXPONENT_LIMIT {
+            Decimal::from_components_unchecked(1, layer, down)
+        } else if layer >= MAX_SAFE_LAYER {
+            Decimal::zero()
+        } else {
+            Decimal::from_components_unchecked(1, layer + 1, -LAYER_REDUCTION_THRESHOLD)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -890,6 +1101,133 @@ mod tests {
         let neg = Decimal::from_finite(-5.0);
         let pos = Decimal::from_finite(3.0);
         assert!(neg < pos);
+    }
+
+    #[test]
+    fn next_up_and_next_down_walk_the_lattice() {
+        let t = LAYER_REDUCTION_THRESHOLD;
+        let top = EXPONENT_LIMIT.next_down(); // 9e15 - 1
+        let c = Decimal::from_components_unchecked;
+        // Every lattice edge, including each layer boundary in both directions.
+        let edges: [(Decimal, Decimal); 12] = [
+            (Decimal::zero(), Decimal::layer_safe_min()),
+            (
+                Decimal::layer_safe_min(),
+                Decimal::layer_safe_min().next_up(),
+            ),
+            (c(1, 2, -t), c(1, 1, -top)),
+            (c(1, 1, -t), c(1, 0, FIRST_NEG_LAYER)),
+            (c(1, 0, FIRST_NEG_LAYER), c(1, 0, FIRST_NEG_LAYER.next_up())),
+            (Decimal::one(), Decimal::from_finite(1.0 + f64::EPSILON)),
+            (c(1, 0, top), c(1, 1, t)),
+            (c(1, 1, top), c(1, 2, t)),
+            (c(1, 5, t), c(1, 5, t.next_up())),
+            (c(1, 7, -20.0), c(1, 7, (-20.0f64).next_up())),
+            (Decimal::layer_safe_max(), Decimal::inf()),
+            (Decimal::inf(), Decimal::inf()),
+        ];
+        for (lo, hi) in edges {
+            assert_eq!(lo.next_up(), hi, "next_up of {lo:?}");
+            if hi.is_finite() {
+                assert_eq!(hi.next_down(), lo, "next_down of {hi:?}");
+            }
+            if lo != hi {
+                assert!(lo < hi, "{lo:?} < {hi:?}");
+            }
+            // Mirror image on the negative side.
+            if lo != hi {
+                assert_eq!((-hi).next_up(), -lo, "next_up of {:?}", -hi);
+            }
+            if hi.is_finite() {
+                assert_eq!((-lo).next_down(), -hi, "next_down of {:?}", -lo);
+            }
+        }
+        // The layer-0 / layer-1 handover is exactly where normalization puts it.
+        assert_eq!(c(1, 0, top).next_up(), Decimal::from_finite(9e15));
+        assert_eq!(c(1, 0, top).next_up().layer(), 1);
+        assert_eq!(Decimal::neg_inf().next_down(), Decimal::neg_inf());
+        assert_eq!(Decimal::neg_inf().next_up(), -Decimal::layer_safe_max());
+        assert_eq!(Decimal::inf().next_down(), Decimal::layer_safe_max());
+    }
+
+    #[test]
+    fn ulp_is_the_spacing_at_each_layer() {
+        assert_eq!(Decimal::one().ulp(), Decimal::from_finite(f64::EPSILON));
+        assert_eq!(Decimal::from(-1).ulp(), Decimal::from_finite(f64::EPSILON));
+        assert_eq!(
+            Decimal::from_finite(4503599627370496.0).ulp(),
+            Decimal::one()
+        );
+        assert_eq!(
+            Decimal::from_finite(8999999999999999.0).ulp(),
+            Decimal::one()
+        );
+        assert_eq!(Decimal::zero().ulp(), Decimal::layer_safe_min());
+        assert_eq!(Decimal::inf().ulp(), Decimal::inf());
+        assert_eq!(Decimal::neg_inf().ulp(), Decimal::inf());
+
+        // Layer 1: 10^300 · ln(10) · ulp(300), and it matches the successor's distance.
+        let big: Decimal = "1e300".parse().unwrap();
+        let expected = 1e300 * core::f64::consts::LN_10 * (300.0f64.next_up() - 300.0);
+        let expected = Decimal::from_finite(expected);
+        assert!(
+            big.ulp().approx_eq(&expected, 1e-9),
+            "{} vs {expected}",
+            big.ulp()
+        );
+        // The subtraction loses a few digits to cancellation in 10^step - 1; the analytic
+        // form is the accurate one, so only agreement in the leading digits is expected.
+        assert!(
+            big.ulp().approx_eq(&(big.next_up() - big), 1e-2),
+            "{} vs {}",
+            big.ulp(),
+            big.next_up() - big
+        );
+        assert_eq!((-big).ulp(), big.ulp());
+        // Tiny values live at layer 1 with a negative mag.
+        let tiny: Decimal = "1e-20".parse().unwrap();
+        let expected = 1e-20 * core::f64::consts::LN_10 * ((-20.0f64).next_up() + 20.0);
+        assert!(tiny.ulp().approx_eq(&Decimal::from_finite(expected), 1e-9));
+        // Layer 2 and up: the spacing is the successor itself.
+        let tower: Decimal = "ee400".parse().unwrap();
+        assert_eq!(tower.ulp(), tower.next_up());
+    }
+
+    #[test]
+    fn distinguishable_needs_a_value_in_between() {
+        let one = Decimal::one();
+        assert!(one.distinguishable(&Decimal::two()));
+        assert!(!one.distinguishable(&one));
+        assert!(!one.distinguishable(&one.next_up()));
+        assert!(!one.next_up().distinguishable(&one));
+        assert!(one.distinguishable(&one.next_up().next_up()));
+        assert!(one.distinguishable(&-one));
+
+        // 2^52 + 0.5 is not representable, so 2^52 and 2^52 + 1 straddle a hole.
+        let p52 = Decimal::from_finite(4503599627370496.0);
+        assert!(!p52.distinguishable(&(p52 + Decimal::one())));
+        assert!(p52.distinguishable(&(p52 + Decimal::two())));
+
+        // The relative-precision hazard at layer 1.
+        let balance: Decimal = "1e300".parse().unwrap();
+        let below: Decimal = "1e286".parse().unwrap();
+        let at: Decimal = "1e287".parse().unwrap();
+        assert_eq!(balance + below, balance);
+        assert!(!balance.distinguishable(&(balance + below)));
+        assert_ne!(balance + at, balance);
+        assert!(!balance.distinguishable(&(balance + at)));
+        let clear: Decimal = "1.000000001e300".parse().unwrap();
+        assert!(balance.distinguishable(&clear));
+
+        // Boundaries and specials.
+        assert!(!Decimal::zero().distinguishable(&Decimal::layer_safe_min()));
+        assert!(Decimal::zero().distinguishable(&"1e-300".parse().unwrap()));
+        assert!(!Decimal::inf().distinguishable(&Decimal::layer_safe_max()));
+        assert!(Decimal::inf().distinguishable(&balance));
+        assert!(Decimal::inf().distinguishable(&Decimal::neg_inf()));
+        assert!(
+            !Decimal::from_finite(8999999999999999.0).distinguishable(&Decimal::from_finite(9e15))
+        );
     }
 
     #[test]

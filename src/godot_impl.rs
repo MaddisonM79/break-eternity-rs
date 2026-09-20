@@ -494,6 +494,31 @@ impl GodotDecimal {
         self.inner.approx_eq(&other.bind().inner, tolerance)
     }
 
+    /// The smallest representable value greater than this one.
+    #[func]
+    fn next_up(&self) -> Gd<Self> {
+        Self::wrap(self.inner.next_up())
+    }
+
+    /// The largest representable value less than this one.
+    #[func]
+    fn next_down(&self) -> Gd<Self> {
+        Self::wrap(self.inner.next_down())
+    }
+
+    /// The spacing of representable values at this magnitude.
+    #[func]
+    fn ulp(&self) -> Gd<Self> {
+        Self::wrap(self.inner.ulp())
+    }
+
+    /// Whether a representable value lies strictly between the two; equal or adjacent values
+    /// cannot be told apart, and arithmetic between them is noise.
+    #[func]
+    fn distinguishable(&self, other: Gd<Self>) -> bool {
+        self.inner.distinguishable(&other.bind().inner)
+    }
+
     #[func]
     fn max(&self, other: Gd<Self>) -> Gd<Self> {
         Self::wrap(self.inner.max(other.bind().inner))

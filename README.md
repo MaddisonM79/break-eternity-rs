@@ -53,6 +53,7 @@ break-eternity-rs = { version = "0.5", features = ["serde"] }
 | `std` (default) | Standard-library float math | Turn it off for `no_std`; see below. |
 | `libm` | Pure-Rust float math from [`libm`](https://crates.io/crates/libm) | Required when `std` is off. Ignored when `std` is on. |
 | `serde` | `Serialize` / `Deserialize` | String in human-readable formats, `(sign, layer, mag)` in binary ones; `serde_components` / `serde_string` adapters. Works without `std`. |
+| `schemars` | `schemars::JsonSchema` for `Decimal` | A named string schema (with a `pattern` for the accepted notations) that also admits the number and `[sign, layer, mag]` forms the deserializer takes. Implies `serde`; works without `std`. |
 | `bevy_reflect` | `bevy_reflect::Reflect` (opaque) for `Decimal` | Put a `Decimal` in a reflected Bevy component; with `serde` also `ReflectSerialize` / `ReflectDeserialize`. Needs Rust 1.92. |
 | `godot4` | `GodotConvert` / `FromGodot` / `ToGodot` for `Decimal`, plus the `GodotDecimal` class, via [`godot`](https://crates.io/crates/godot) | Godot 4 / gdext. `Decimal` crosses as a `GString`; `GodotDecimal` gives GDScript the arithmetic. Needs Rust 1.94. |
 | `proptest` | `proptest::Arbitrary` for `Decimal`, presets in `break_eternity::strategy` | For property tests in your own crate; implies `std`. |
@@ -253,6 +254,8 @@ All tetration-family methods take a `mode: TetrationMode` argument. `TetrationMo
 | `max` / `min` / `maxabs` / `minabs` | Pairwise selection. |
 | `clamp` / `clamp_min` / `clamp_max` | Range clamping. |
 | `approx_eq` / `approx_ne` / `approx_lt` / `approx_le` / `approx_gt` / `approx_ge` / `cmp_tolerance` | Tolerance-based comparisons. |
+| `next_up` / `next_down` / `ulp` | The adjacent representable values and the spacing between them, across layer boundaries. |
+| `distinguishable` | Whether a representable value lies strictly between two Decimals; equal or adjacent values are not distinguishable. The tolerance-free check for the relative-precision hazard: at `1e300` the spacing is about `1e287`. |
 
 ### Game helpers
 
@@ -266,7 +269,7 @@ Associated functions for the two cost curves every incremental game ends up with
 | `sum_arithmetic_series(n, start, add, owned)` | what do the next `n` of those cost? |
 | `efficiency_of_purchase(cost, current_rps, delta_rps)` | Frozen-Cookies efficiency score; lower is better. |
 
-Each has a `checked_` twin for degenerate inputs. See `examples/idle_loop.rs`.
+Each has a `checked_` twin for degenerate inputs. The two `afford_*` inverses are settled against their sums, so `sum(n) <= resources < sum(n + 1)` holds for the `n` they return. See `examples/idle_loop.rs`.
 
 ## Examples
 
@@ -382,6 +385,26 @@ let json = serde_json::to_string(&save).unwrap();
 let back: Save = serde_json::from_str(&json).unwrap();
 assert_eq!(save.money, back.money);
 ```
+
+### JSON Schema with `schemars`
+
+Enable `features = ["schemars"]` and every `Decimal` field in a `#[derive(JsonSchema)]` type resolves to a shared `Decimal` definition, so an editor with JSON Schema support completes and validates it in hand-written JSON or JSONC content:
+
+```rust,ignore
+use break_eternity::Decimal;
+use schemars::{schema_for, JsonSchema};
+
+#[derive(JsonSchema)]
+struct Upgrade {
+    cost: Decimal,
+    multiplier: Decimal,
+}
+
+let schema = schema_for!(Upgrade);
+std::fs::write("upgrade.schema.json", serde_json::to_string_pretty(&schema).unwrap()).unwrap();
+```
+
+The definition accepts a string (`"1.5e100"`, `"ee10"`, `"(e^7)10"`, ...; the `pattern` rejects text outside the parser's grammar), a plain number, or a `[sign, layer, mag]` array, matching what `Deserialize` loads.
 
 ### Bevy
 
@@ -514,7 +537,7 @@ The crate follows the upstream algorithms closely enough that `tests/fixtures/pa
 
 ## Minimum supported Rust version
 
-`rustc 1.87` (Rust 2021 edition) for the crate with any combination of `std`, `libm`, `serde`, `proptest` and `wasm`. Two features pull in engine crates with their own floors: `bevy_reflect` needs `1.92` (bevy 0.19's proc macros) and `godot4` needs `1.94` (gdext 0.5). CI checks all three.
+`rustc 1.87` (Rust 2021 edition) for the crate with any combination of `std`, `libm`, `serde`, `schemars`, `proptest` and `wasm`. Two features pull in engine crates with their own floors: `bevy_reflect` needs `1.92` (bevy 0.19's proc macros) and `godot4` needs `1.94` (gdext 0.5). CI checks all three.
 
 ## Contributing
 

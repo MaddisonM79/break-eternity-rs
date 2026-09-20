@@ -53,6 +53,12 @@ fn comparisons() {
     assert!(d("1").lt(&d("2")));
     assert!(d("Infinity").gt(&d("1e1000")));
     assert!(d("1").approx_eq(&d("1.00000000001"), 1e-10));
+    let balance = d("1e300");
+    assert!(balance.next_up().gt(&balance));
+    assert!(balance.next_down().lt(&balance));
+    assert!(balance.ulp().gt(&d("1e287")));
+    assert!(!balance.distinguishable(&d("1.0000000000001e300")));
+    assert!(balance.distinguishable(&d("1.000000001e300")));
     assert_eq!(d("5").max(&d("7")).js_to_string(), "7");
 }
 

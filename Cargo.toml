@@ -1,6 +1,6 @@
 [package]
 name = "break-eternity-rs"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 rust-version = "1.87"
 license = "MIT"
@@ -30,11 +30,14 @@ godot = { version = "0.5", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 js-sys = { version = "0.3", optional = true }
 bevy_reflect = { version = "0.19", default-features = false, optional = true }
+schemars = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+schemars = "1"
+regex-lite = "0.1"
 
 # proptest and criterion pull in getrandom, which has no default wasm32 backend.
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
@@ -57,6 +60,9 @@ std = ["thiserror/std", "serde?/std"]
 libm = ["dep:libm"]
 # `Serialize` / `Deserialize` for `Decimal` (string form by default; see `serde_components`).
 serde = ["dep:serde"]
+# `schemars::JsonSchema` for `Decimal`: the string form, plus the number and component forms
+# the deserializer also accepts. Implies `serde`.
+schemars = ["serde", "dep:schemars"]
 # `proptest::Arbitrary` for `Decimal` and the strategies in `break_eternity::strategy`.
 proptest = ["std", "dep:proptest"]
 # Godot 4 via gdext: `GodotConvert` for `Decimal` and the `GodotDecimal` class. Needs Rust 1.94.

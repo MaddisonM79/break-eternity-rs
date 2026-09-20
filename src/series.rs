@@ -4,6 +4,9 @@
 //! `sumGeometricSeries`, `affordArithmeticSeries`, `sumArithmeticSeries`,
 //! `efficiencyOfPurchase`). Each has a `checked_*` form that reports degenerate inputs as an
 //! [`ArithmeticError`], and a plain form that panics on them.
+//!
+//! The two `afford_*` inverses are settled against their `sum_*` counterparts (see [`settle`]),
+//! so `sum(n) <= resources < sum(n + 1)` holds for the `n` they return.
 
 use crate::decimal::Decimal;
 use crate::error::ArithmeticError;
@@ -13,7 +16,15 @@ impl Decimal {
     /// `price_start`, multiplies by `price_ratio` per purchase, and `current_owned` have already
     /// been bought.
     ///
-    /// A ratio of exactly 1 degenerates to `floor(resources / price_start)`.
+    /// The result `n` agrees with [`sum_geometric_series`](Self::sum_geometric_series):
+    /// `sum(n) <= resources_available < sum(n + 1)`, so a budget of exactly `sum(n)` affords
+    /// `n`, never `n - 1`. (The closed-form inverse alone lands a rounding step short of the
+    /// sum in roughly half of all exact-boundary cases; the count is nudged by up to two steps
+    /// to match the sum, which is the authority.)
+    ///
+    /// A ratio of exactly 1 degenerates to `floor(resources / price_start)`. A ratio below 1
+    /// makes the series converge to `start / (1 - ratio)`; a budget that covers that total
+    /// affords every further purchase, and the result is infinity.
     ///
     /// # Panics
     ///
@@ -51,26 +62,25 @@ impl Decimal {
         }
         let one = Decimal::one();
         let actual_start = price_start.mul_raw(price_ratio.pow_raw(current_owned));
-        if price_ratio == one {
-            return resources_available
+        let estimate = if price_ratio == one {
+            resources_available.div_raw(actual_start).floor()
+        } else {
+            // floor(log10(resources / start * (ratio - 1) + 1) / log10(ratio))
+            let inner = resources_available
                 .div_raw(actual_start)
-                .floor()
-                .nan_to_err(op);
-        }
-        // floor(log10(resources / start * (ratio - 1) + 1) / log10(ratio))
-        let inner = resources_available
-            .div_raw(actual_start)
-            .mul_raw(price_ratio.sub_raw(one))
-            .add_raw(one);
-        if inner.sign <= 0 {
-            // Decreasing price ratio and not enough resources for even one purchase.
-            return Ok(Decimal::zero());
-        }
-        inner
-            .log10_raw()
-            .div_raw(price_ratio.log10_raw())
-            .floor()
-            .nan_to_err(op)
+                .mul_raw(price_ratio.sub_raw(one))
+                .add_raw(one);
+            if inner.sign <= 0 {
+                // A shrinking price whose infinite total, start / (1 - ratio), fits in the
+                // budget: every further purchase is affordable.
+                return Ok(Decimal::inf());
+            }
+            inner.log10_raw().div_raw(price_ratio.log10_raw()).floor()
+        };
+        let estimate = estimate.nan_to_err(op)?;
+        Ok(settle(estimate, resources_available, |n| {
+            Self::checked_sum_geometric_series(n, price_start, price_ratio, current_owned)
+        }))
     }
 
     /// Total cost of buying `num_items` items when the price starts at `price_start`,
@@ -118,6 +128,10 @@ impl Decimal {
     /// `price_start`, increases by `price_add` per purchase, and `current_owned` have already
     /// been bought.
     ///
+    /// The result `n` agrees with [`sum_arithmetic_series`](Self::sum_arithmetic_series):
+    /// `sum(n) <= resources_available < sum(n + 1)`. See
+    /// [`afford_geometric_series`](Self::afford_geometric_series) for why that needs saying.
+    ///
     /// # Panics
     ///
     /// Panics on degenerate inputs (a non-positive `price_add`). Use
@@ -163,7 +177,14 @@ impl Decimal {
                     .mul_raw(Decimal::two()),
             )
             .sqrt_raw();
-        (-b).add_raw(root).div_raw(price_add).floor().nan_to_err(op)
+        let estimate = (-b)
+            .add_raw(root)
+            .div_raw(price_add)
+            .floor()
+            .nan_to_err(op)?;
+        Ok(settle(estimate, resources_available, |n| {
+            Self::checked_sum_arithmetic_series(n, price_start, price_add, current_owned)
+        }))
     }
 
     /// Total cost of buying `num_items` items when the price starts at `price_start`,
@@ -230,6 +251,45 @@ impl Decimal {
     }
 }
 
+/// Nudges a closed-form purchase count until it agrees with the series sum it inverts.
+///
+/// The inverse (a log or a square root) and the sum (a power) round differently in the last
+/// bit, so a budget of exactly `sum(n)` comes back from the closed form as `n - 1` about half
+/// the time, and `sum(n)` can land a hair above a budget the closed form accepted. Walk at most
+/// two steps in each direction until `sum(count) <= resources < sum(count + 1)`, which is the
+/// check a caller would otherwise have to make by hand.
+///
+/// Two steps cover every case the closed form can produce: its error is a rounding step in the
+/// log domain, well under one item. Where the sum cannot distinguish `count` from `count + 1`
+/// (counts above layer 0) the walk is a no-op, and a sum that fails leaves `count` untouched.
+fn settle(
+    mut count: Decimal,
+    resources: Decimal,
+    sum: impl Fn(Decimal) -> Result<Decimal, ArithmeticError>,
+) -> Decimal {
+    if count.is_infinite() {
+        return count;
+    }
+    let one = Decimal::one();
+    for _ in 0..2 {
+        match sum(count) {
+            Ok(total) if count.sign() > 0 && total > resources => count = count.sub_raw(one),
+            _ => break,
+        }
+    }
+    for _ in 0..2 {
+        let next = count.add_raw(one);
+        if next == count {
+            break;
+        }
+        match sum(next) {
+            Ok(total) if total <= resources => count = next,
+            _ => break,
+        }
+    }
+    count
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,6 +332,80 @@ mod tests {
         let big: Decimal = "1e500".parse().unwrap();
         let n = Decimal::afford_geometric_series(big, d(1.0), d(1.15), d(0.0));
         assert_eq!(n, d(8223.0), "{n}");
+    }
+
+    #[test]
+    fn afford_agrees_with_sum_at_exact_boundaries() {
+        // The closed form alone returns n - 1 for a budget of exactly sum(n) in about half of
+        // these; the settle step restores the contract sum(n) <= budget < sum(n + 1).
+        let zero = Decimal::zero();
+        for (start, ratio) in [
+            (8e13, 2.0),
+            (10.0, 1.5),
+            (10.0, 1.15),
+            (1.0, 1.07),
+            (3.0, 3.0),
+        ] {
+            let (start, ratio) = (d(start), d(ratio));
+            for n in 1..=300u32 {
+                let n = Decimal::from(n);
+                let budget = Decimal::sum_geometric_series(n, start, ratio, zero);
+                let got = Decimal::afford_geometric_series(budget, start, ratio, zero);
+                assert_eq!(
+                    got, n,
+                    "geometric start={start} ratio={ratio} budget={budget}"
+                );
+                let next = Decimal::sum_geometric_series(n.add_raw(d(1.0)), start, ratio, zero);
+                assert!(next > budget, "sum({n}) == sum({n} + 1) at {budget}");
+            }
+        }
+        for (start, add) in [(10.0, 2.0), (0.7, 0.3), (8e13, 1e12), (1.0, 1e-3)] {
+            let (start, add) = (d(start), d(add));
+            for n in 1..=300u32 {
+                let n = Decimal::from(n);
+                let budget = Decimal::sum_arithmetic_series(n, start, add, zero);
+                let got = Decimal::afford_arithmetic_series(budget, start, add, zero);
+                assert_eq!(got, n, "arithmetic start={start} add={add} budget={budget}");
+            }
+        }
+        // A flat price with a non-representable step: 3 * 0.7 = 2.0999999999999996.
+        assert_eq!(
+            Decimal::afford_geometric_series(d(3.0 * 0.7), d(0.7), d(1.0), d(0.0)),
+            d(3.0)
+        );
+        // One unit short of the boundary is still n - 1.
+        assert_eq!(
+            Decimal::afford_geometric_series(d(5.6e14 - 1.0), d(8e13), d(2.0), d(0.0)),
+            d(2.0)
+        );
+        // Owned offsets shift the start; the contract holds there too.
+        let budget = Decimal::sum_geometric_series(d(7.0), d(8e13), d(2.0), d(5.0));
+        assert_eq!(
+            Decimal::afford_geometric_series(budget, d(8e13), d(2.0), d(5.0)),
+            d(7.0)
+        );
+    }
+
+    #[test]
+    fn shrinking_prices_saturate_to_infinity() {
+        // Prices 10, 5, 2.5, ... sum to 20; a budget of 20 or more affords every purchase.
+        assert_eq!(
+            Decimal::afford_geometric_series(d(20.0), d(10.0), d(0.5), d(0.0)),
+            Decimal::inf()
+        );
+        assert_eq!(
+            Decimal::afford_geometric_series(d(1e6), d(10.0), d(0.5), d(0.0)),
+            Decimal::inf()
+        );
+        // Just under the total is a large finite count: sum(n) <= 19.99 < sum(n + 1).
+        let n = Decimal::afford_geometric_series(d(19.99), d(10.0), d(0.5), d(0.0));
+        assert!(n.is_finite() && n >= d(9.0), "{n}");
+        assert!(Decimal::sum_geometric_series(n, d(10.0), d(0.5), d(0.0)) <= d(19.99));
+        // Not even the first purchase.
+        assert_eq!(
+            Decimal::afford_geometric_series(d(9.0), d(10.0), d(0.5), d(0.0)),
+            d(0.0)
+        );
     }
 
     #[test]

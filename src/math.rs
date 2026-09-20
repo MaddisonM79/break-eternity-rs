@@ -18,6 +18,7 @@ pub(crate) trait FloatExt: Sized {
     fn powi(self, n: i32) -> Self;
     fn powf(self, y: Self) -> Self;
     fn exp(self) -> Self;
+    fn exp_m1(self) -> Self;
     fn ln(self) -> Self;
     fn log10(self) -> Self;
     fn log2(self) -> Self;
@@ -90,6 +91,10 @@ impl FloatExt for f64 {
     #[inline]
     fn exp(self) -> f64 {
         libm::exp(self)
+    }
+    #[inline]
+    fn exp_m1(self) -> f64 {
+        libm::expm1(self)
     }
     #[inline]
     fn ln(self) -> f64 {

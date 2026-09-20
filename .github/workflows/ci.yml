@@ -52,7 +52,7 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo doc --no-deps --features serde,wasm,proptest,bevy_reflect
+      - run: cargo doc --no-deps --features serde,schemars,wasm,proptest,bevy_reflect
 
   test:
     name: test (${{ matrix.rust }} / ${{ matrix.os }})
@@ -73,6 +73,7 @@ jobs:
       # The core test matrix runs against the default + serde features only.
       - run: cargo test --features serde
       - run: cargo test --features proptest --test proptest_arbitrary
+      - run: cargo test --features schemars --test schemars
       - run: cargo test --features bevy_reflect,serde --test bevy_reflect
       - run: cargo test --no-default-features --features libm --lib
       - run: cargo build --examples
@@ -87,10 +88,10 @@ jobs:
         include:
           # The crate itself, with every feature that does not pull in an engine.
           - rust: "1.87"
-            features: serde,libm,proptest,wasm
+            features: serde,schemars,libm,proptest,wasm
           # bevy_reflect 0.19's proc-macro crate needs RwLockWriteGuard::downgrade.
           - rust: "1.92"
-            features: serde,libm,proptest,wasm,bevy_reflect
+            features: serde,schemars,libm,proptest,wasm,bevy_reflect
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
