@@ -20,6 +20,7 @@ type Checked1 = fn(Decimal) -> Result<Decimal, ArithmeticError>;
 type Plain1 = fn(Decimal) -> Decimal;
 type Checked2 = fn(Decimal, Decimal) -> Result<Decimal, ArithmeticError>;
 type Plain2 = fn(Decimal, Decimal) -> Decimal;
+type Checked4 = fn(Decimal, Decimal, Decimal, Decimal) -> Result<Decimal, ArithmeticError>;
 
 const A: TetrationMode = TetrationMode::Analytic;
 
@@ -207,7 +208,7 @@ fn quietly<T>(f: impl FnOnce() -> T) -> Result<T, ()> {
 fn assert_well_formed(op: &str, input: &str, v: Decimal) -> Result<(), TestCaseError> {
     let ctx = || format!("{op}({input}) -> {v:?}");
     prop_assert!(v.is_finite() || v.is_infinite(), "NaN escaped: {}", ctx());
-    prop_assert!(matches!(v.sign(), -1 | 0 | 1), "bad sign: {}", ctx());
+    prop_assert!(matches!(v.sign(), -1..=1), "bad sign: {}", ctx());
     prop_assert!(v.layer() >= 0, "negative layer: {}", ctx());
     if v.is_zero() {
         prop_assert!(
@@ -347,7 +348,7 @@ proptest! {
     ) {
         std::panic::set_hook(Box::new(|_| {}));
         let input = format!("{resources:?}, {start:?}, {step:?}, {owned:?}");
-        let ops: [(&str, fn(Decimal, Decimal, Decimal, Decimal) -> Result<Decimal, ArithmeticError>); 4] = [
+        let ops: [(&str, Checked4); 4] = [
             ("afford_geometric", Decimal::checked_afford_geometric_series),
             ("sum_geometric", Decimal::checked_sum_geometric_series),
             ("afford_arithmetic", Decimal::checked_afford_arithmetic_series),
