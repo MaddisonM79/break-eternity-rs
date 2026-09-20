@@ -332,8 +332,9 @@ impl Decimal {
 
     /// Super-logarithm: the height of the power tower of `base` that equals `self`.
     ///
-    /// `base` defaults to 10. The initial estimate from the layer structure is refined with a
-    /// 100-iteration binary search against [`tetrate`](Self::tetrate).
+    /// `base` defaults to 10. The initial estimate from the layer structure is refined against
+    /// [`tetrate`](Self::tetrate) with a bracketed secant search (at most 100 probes, usually
+    /// under ten) until `tetrate(base, slog(x)) == x` to double precision.
     ///
     /// # Panics
     ///
@@ -359,39 +360,24 @@ impl Decimal {
         self.slog_raw(base, 100, mode).nan_to_err("slog")
     }
 
-    pub(crate) fn slog_raw(self, base: Decimal, iterations: u32, mode: TetrationMode) -> Decimal {
+    /// Super-logarithm kernel: the layer-structure estimate, refined against `tetrate` with
+    /// at most `max_probes` evaluations. See [`refine_slog`].
+    pub(crate) fn slog_raw(self, base: Decimal, max_probes: u32, mode: TetrationMode) -> Decimal {
         let initial = self.slog_internal_raw(base, mode);
         if !initial.is_finite() {
             return initial;
         }
-        let mut result = initial.to_number();
-
-        let one = Decimal::one();
-        let mut step_size = 0.001_f64;
-        let mut has_changed_directions_once = false;
-        let mut previously_rose = false;
-
-        for i in 1..iterations {
-            let new_decimal = base.tetrate_raw(result, one, mode);
-            // A NaN probe compares false (as in JS), which steers the search back.
-            let currently_rose = new_decimal > self;
-            if i > 1 && previously_rose != currently_rose {
-                has_changed_directions_once = true;
-            }
-            previously_rose = currently_rose;
-            if has_changed_directions_once {
-                step_size /= 2.0;
-            } else {
-                step_size *= 2.0;
-            }
-            step_size = step_size.abs() * if currently_rose { -1.0 } else { 1.0 };
-            result += step_size;
-            if step_size == 0.0 {
-                break;
-            }
+        // Below base 1 the only finite estimates are the exact answers 0 (for 1) and -1 (for 0).
+        if base < Decimal::one() {
+            return initial;
         }
-
-        Decimal::from_f64(result)
+        Decimal::from_f64(refine_slog(
+            self,
+            base,
+            initial.to_number(),
+            max_probes,
+            mode,
+        ))
     }
 
     /// Initial slog estimate from the layer structure (JS `slog_internal`).
@@ -1298,6 +1284,190 @@ impl Decimal {
 /// A strange version of slog for bases between 1 and `e^(1/e)` that can handle values above
 /// `base^^inf`. Returns the slog-like value and a range code: 0 below the lower fixed point of
 /// `b^x = x` (ordinary slog), 1 between the two fixed points, 2 above the upper one.
+/// `log10` applied `depth` times, as an `f64`, extended monotonically: any value that is
+/// zero or negative at some step (and so has no further logarithm) maps to `-inf`, since it is
+/// below every value that survives all `depth` steps. `NaN` only for the NaN sentinel.
+///
+/// Peeling `k <= layer` logarithms off a positive-`mag` value is just `layer - k`, so this is
+/// O(1) in the layer even when the layer is `9e15`.
+fn iterated_log10(v: Decimal, depth: i64) -> f64 {
+    if v.has_nan_mag() {
+        return f64::NAN;
+    }
+    if depth == 0 {
+        return v.to_number();
+    }
+    if v.sign <= 0 {
+        return f64::NEG_INFINITY;
+    }
+    if v.layer > 0 && v.mag < 0.0 {
+        // Between 0 and 1: one logarithm makes it negative, a second is undefined.
+        return if depth == 1 {
+            Decimal::from_components(-1, v.layer - 1, -v.mag).to_number()
+        } else {
+            f64::NEG_INFINITY
+        };
+    }
+    if v.layer >= depth {
+        return Decimal::from_components(1, v.layer - depth, v.mag).to_number();
+    }
+    // `layer` logarithms bring it to a plain float (`mag` itself, or the layer-0 value); the
+    // rest are ordinary f64 logs, which hit a non-positive value within a handful of steps.
+    let mut x = v.mag;
+    let mut remaining = depth - v.layer;
+    while remaining > 0 {
+        if x <= 0.0 {
+            return f64::NEG_INFINITY;
+        }
+        x = x.log10();
+        remaining -= 1;
+    }
+    x
+}
+
+/// Refines a super-logarithm estimate so that `tetrate(base, h) == target` to double
+/// precision.
+///
+/// Upstream walks `h` with a step that doubles until the probe crosses the target and halves
+/// afterwards, spending ~100 `tetrate` calls per `slog`. This is a secant search on the same
+/// root, safeguarded by bisection once a bracket exists, and typically converges in under ten
+/// probes. The residual is measured after `depth` iterated logarithms so it is smooth in `h`
+/// across layer changes and never overflows: `depth` is the target's layer plus one (one for a
+/// plain float, and one for the tiny values stored with a negative `mag`).
+///
+/// Negative targets are measured through the negated values, since `tetrate` is negative
+/// exactly on heights in `(-2, -1)` and stays monotone there. An infinite residual still has
+/// a direction and updates the bracket; only an undefined probe (`tetrate` returned NaN)
+/// carries none, and the search halves the step back toward the last finite probe.
+/// `max_probes` bounds the total `tetrate` calls.
+fn refine_slog(
+    target: Decimal,
+    base: Decimal,
+    estimate: f64,
+    max_probes: u32,
+    mode: TetrationMode,
+) -> f64 {
+    let depth = if target.sign == 0 {
+        0
+    } else if target.layer == 0 || target.mag < 0.0 {
+        1
+    } else {
+        target.layer + 1
+    };
+    let negative = target.sign < 0;
+    let measure = |v: Decimal| -> f64 {
+        if negative {
+            -iterated_log10(-v, depth)
+        } else {
+            iterated_log10(v, depth)
+        }
+    };
+    let goal = measure(target);
+    if !goal.is_finite() {
+        return estimate;
+    }
+    let one = Decimal::one();
+    let probes = core::cell::Cell::new(0u32);
+    let probe = |h: f64| -> f64 {
+        probes.set(probes.get() + 1);
+        measure(base.tetrate_raw(h, one, mode)) - goal
+    };
+
+    // The estimate itself can sit where tetrate is undefined; look nearby for solid ground.
+    let mut a = estimate;
+    let mut fa = probe(a);
+    if !fa.is_finite() {
+        let mut found = false;
+        for offset in [0.001, -0.001, 0.01, -0.01, 0.1, -0.1] {
+            fa = probe(estimate + offset);
+            if fa.is_finite() {
+                a = estimate + offset;
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            return estimate;
+        }
+    }
+    if fa == 0.0 {
+        return a;
+    }
+
+    // Bracket ends with their residuals: `lo` negative, `hi` positive.
+    let mut lo = if fa < 0.0 { Some((a, fa)) } else { None };
+    let mut hi = if fa > 0.0 { Some((a, fa)) } else { None };
+    // Second point in the direction the residual says the root lies.
+    let mut b = a + 0.001 * -fa.signum();
+    let mut fb = probe(b);
+
+    while probes.get() < max_probes {
+        if fb == 0.0 {
+            return b;
+        }
+        if fb < 0.0 {
+            lo = Some((b, fb));
+        } else if fb > 0.0 {
+            hi = Some((b, fb));
+        }
+
+        let bracket = match (lo, hi) {
+            (Some((l, _)), Some((h, _))) => Some((l.min(h), l.max(h))),
+            _ => None,
+        };
+        if let (Some((l, fl)), Some((h, fh))) = (lo, hi) {
+            // Relative only: heights near 0 (huge bases) still have plenty of resolution.
+            if (h - l).abs() <= 2.0 * f64::EPSILON * h.abs().max(l.abs()) {
+                // Adjacent floats straddle the root (or the root is below resolution, as for
+                // slog(1e-1000) = -1 + 1e-1000): take the side that is closer in residual.
+                return if fl.abs() <= fh.abs() { l } else { h };
+            }
+        }
+
+        let candidate = if fb.is_nan() {
+            // No direction from this probe: pull back toward the last finite one.
+            0.5 * (a + b)
+        } else if fa.is_finite() && fb.is_finite() && fb != fa {
+            let secant = b - fb * (b - a) / (fb - fa);
+            match bracket {
+                Some((l, h)) if !(secant > l && secant < h && secant.is_finite()) => 0.5 * (l + h),
+                None if !secant.is_finite() => b + 2.0 * (b - a),
+                _ => secant,
+            }
+        } else {
+            match bracket {
+                Some((l, h)) => 0.5 * (l + h),
+                // Flat, single point, or infinite residual: march the way it points.
+                None => b + (b - a).abs().max(0.001) * 2.0 * -fb.signum(),
+            }
+        };
+
+        if (candidate - b).abs() <= 2.0 * f64::EPSILON * candidate.abs().max(b.abs()) {
+            return if fb.is_nan() { candidate } else { b };
+        }
+        if !fb.is_nan() {
+            a = b;
+            fa = fb;
+        }
+        b = candidate;
+        fb = probe(b);
+    }
+
+    // Out of probes. With a bracket, the side closer in residual is the better answer: for
+    // a huge base the root can be 1e-1000, below f64 resolution, and `lo` is then exactly 0.
+    match (lo, hi) {
+        (Some((l, fl)), Some((h, fh))) => {
+            if fl.abs() <= fh.abs() {
+                l
+            } else {
+                h
+            }
+        }
+        _ if fb.is_nan() => a,
+        _ => b,
+    }
+}
+
 fn excess_slog_raw(value: Decimal, base: Decimal, mode: TetrationMode) -> (Decimal, u8) {
     let one = Decimal::one();
     let two = Decimal::two();
@@ -1767,6 +1937,77 @@ impl<F: Fn(Decimal) -> Decimal> InverseSearch<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The refinement makes slog the inverse of tetrate to double precision, for every
+    /// target shape (plain, layer 1..3, tiny, negative) and both modes.
+    #[test]
+    fn slog_inverts_tetrate() {
+        let bases = [
+            Decimal::two(),
+            Decimal::from_finite(core::f64::consts::E),
+            Decimal::from_finite(3.5),
+            Decimal::ten(),
+            Decimal::from_finite(1e10),
+        ];
+        let targets: [Decimal; 11] = [
+            "0.5",
+            "1",
+            "2",
+            "10",
+            "12345.678",
+            "1e10",
+            "1e100",
+            "1e1e15",
+            "10^^3",
+            "10^^4",
+            "-1",
+        ]
+        .map(|s| s.parse().unwrap());
+        for mode in [TetrationMode::Analytic, TetrationMode::Linear] {
+            for base in bases {
+                for x in targets {
+                    let Ok(h) = x.checked_slog(base, mode) else {
+                        continue;
+                    };
+                    let back = base.tetrate(Some(h.to_number()), None, mode);
+                    // One ulp of a height near 2 moves a layer-1 mag by ~1e-12 relative; for
+                    // a negative target the height sits at -2 + tiny and loses more.
+                    let tol = if x.is_negative() { 1e-6 } else { 1e-9 };
+                    assert!(
+                        back.approx_eq(&x, tol),
+                        "slog_{base:?}({x:?}) = {h:?} ({mode:?}) but tetrate gives {back:?}"
+                    );
+                }
+            }
+        }
+        // Zero is exact: slog(1) is 0 and slog(0) is -1.
+        assert_eq!(
+            Decimal::one().slog(None, TetrationMode::Analytic),
+            Decimal::zero()
+        );
+        assert_eq!(
+            Decimal::zero().slog(None, TetrationMode::Linear),
+            Decimal::neg_one()
+        );
+        // Roots below f64 resolution land on the boundary rather than short of it.
+        for s in ["1e-20", "1e-1000"] {
+            let tiny: Decimal = s.parse().unwrap();
+            for mode in [TetrationMode::Analytic, TetrationMode::Linear] {
+                let h = tiny.slog(None, mode).to_number();
+                assert!((-1.0..-1.0 + 1e-15).contains(&h), "slog({s}) = {h}");
+            }
+        }
+        // A huge base: slog(10) is 1e-1000, i.e. 0, and layer_add(1) gives back the base.
+        let base: Decimal = "ee1000".parse().unwrap();
+        assert_eq!(
+            Decimal::ten().slog(Some(base), TetrationMode::Analytic),
+            Decimal::zero()
+        );
+        assert_eq!(
+            Decimal::ten().layer_add(1.0, base, TetrationMode::Analytic),
+            base
+        );
+    }
 
     fn d(s: &str) -> Decimal {
         s.parse().unwrap()

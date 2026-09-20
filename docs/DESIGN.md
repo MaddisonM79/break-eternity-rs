@@ -127,10 +127,16 @@ add it to `generate.mjs` and to `evaluate()` in `parity.rs`; add it to the table
 
 * `Decimal` is 24 bytes (`i8` + padding + `i64` + `f64`). Folding the sign into the layer's
   sign bit would make it 16; measure with `cargo bench` before bothering.
-* `slog` refines its initial estimate with up to 100 `tetrate` probes; `layer_add`, fractional
-  `iteratedlog`, `penta_log`, and literals like `"10^^2.5"` all sit on top of it. It dominates
-  the parity run. A Newton step on the layer-0 residual would cut it substantially and is the
-  first place to look if tetration-heavy code is slow.
+* `slog` refines its layer-structure estimate with a bracketed secant search on the residual
+  `log10^(k)(tetrate(b, h)) - log10^(k)(x)`, which is smooth in `h` across layer changes
+  (`refine_slog` in `tetration.rs`). It converges in well under ten `tetrate` probes where
+  upstream's doubling/halving walk takes ~100, so `slog(ee1000)` went from 28 µs to under 4 µs
+  and the parity run from ~70 s to under a second. `layer_add`, fractional `iteratedlog`,
+  `penta_log`, and literals like `"10^^2.5"` all sit on top of it.
+* Heights are `f64`, so `slog` of a negative value or of one below `1/9e15` is `-1 - ε` or
+  `-2 + ε` with `ε` mostly below resolution; `layer_add` on such values is noise-limited in
+  every port (see the parity rules). An integer `diff` could bypass `slog` entirely; nobody
+  has needed it yet.
 * The layer-0 fast paths (`powf`, native `%`, direct `f64` arithmetic) mean ordinary
   idle-game math never touches the log-domain code. Keep it that way: check `layer == 0` early.
 

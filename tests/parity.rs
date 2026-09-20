@@ -62,15 +62,23 @@ fn deliberate_divergence(
         "root" if b.is_some_and(|b| b.is_zero()) && got.is_none() => {
             Some("0th root is DivisionByZero (JS returns x for x in {0, 1})")
         }
-        // Below a convergent base's fixed point, slog of a negative value has no meaning;
-        // upstream documents the results as noise, and the two ports land on different noise.
-        "layeradd_base"
-            if a.is_negative()
-                && b.is_some_and(|b| {
-                    b <= Decimal::from_finite(break_eternity::TETRATION_CONVERGENCE_MAX)
-                }) =>
+        // Upstream refines slog with a step search that, on a base below 1, never sees the
+        // probe cross the target and runs off to a height of ~1e27; layer_add and
+        // negative-height tetrate then return the base's fixed point instead of the value.
+        "layeradd_base" if b.is_some_and(|b| b < Decimal::one()) => {
+            Some("layer_add on a base below 1: upstream's slog search runs away")
+        }
+        "tetrate_neg0_5" if a < Decimal::one() => {
+            Some("layer_add on a base below 1: upstream's slog search runs away")
+        }
+        // slog of a negative value, or of one below 1/9e15, lies within f64 resolution of -1
+        // or -2, so the height carries almost no digits and layer_add amplifies whatever the
+        // search's last step left. Upstream's 100-step walk and the secant search here stop
+        // on different noise. (A base at or below e^(1/e) makes it ill-defined outright.)
+        "layeradd_base" | "layeradd10_0_5" | "iteratedlog10_1_5"
+            if a.is_negative() || (a.layer() > 0 && a.mag() < 0.0) =>
         {
-            Some("layer_add of a negative value on a base <= e^(1/e) is ill-defined")
+            Some("layer_add of a negative or sub-1/9e15 value is resolution-limited noise")
         }
         // JS returns 0 for 0 raised to a negative power; that is 1/0.
         "pow" | "root" if a.is_zero() && b.is_some_and(|b| b.is_negative()) && got.is_none() => {
@@ -98,6 +106,10 @@ fn load_cases() -> Vec<Case> {
 }
 
 const PARITY_TOLERANCE: f64 = 1e-8;
+/// Below this magnitude, both sides are treated as zero.
+fn near_zero(d: &Decimal) -> bool {
+    d.abs() < Decimal::from_finite(1e-12)
+}
 const SEARCH_TOLERANCE: f64 = 1e-6;
 
 fn tolerance_for(op: &str) -> f64 {
@@ -303,7 +315,11 @@ fn js_parity() {
             continue;
         }
         match got {
-            Some(got) if got.approx_eq(&expected, tolerance_for(&case.op)) => {}
+            // Relative tolerance is meaningless next to zero: JS returns ~1e-16 noise for
+            // slog(1) where the exact answer is 0.
+            Some(got)
+                if got.approx_eq(&expected, tolerance_for(&case.op))
+                    || (near_zero(&expected) && near_zero(&got)) => {}
             Some(got) => failures.push(format!(
                 "MISMATCH: op={} a={:?} b={:?} expected={} got={got}",
                 case.op, case.a, case.b, case.result
