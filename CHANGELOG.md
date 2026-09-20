@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-20
+
+The first published 0.5 release. `v0.5.0` was tagged but its release workflow failed before
+publishing (the `no_std` build step predated the `libm` feature), so it never reached
+crates.io; 0.5.1 is the same code with that workflow step fixed.
+
+### Fixed
+
+- Release workflow builds the `no_std` configuration with `--features libm`, matching CI.
+
 ## [0.5.0] - 2026-09-20
 
 A correctness release. Everything below was found by an audit of the 0.4.0 surface against
@@ -356,7 +366,8 @@ These join the existing `TryFrom<&str>` impl; all three delegate to the same par
 - **Known issue (fixed in 0.2.0)**: published `repository` and `homepage` URLs link to a non-existent GitHub repo.
 - **Known issue (fixed in 0.2.0)**: published `authors` field exposed a personal email address.
 
-[Unreleased]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.2.1...v0.3.0
