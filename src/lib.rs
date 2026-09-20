@@ -29,6 +29,7 @@ extern crate std;
 
 mod arithmetic;
 mod constants;
+mod convert;
 mod critical_section;
 mod decimal;
 mod error;
@@ -38,6 +39,7 @@ mod godot_impl;
 mod math;
 pub mod notation;
 mod parse;
+mod rounding;
 #[cfg(feature = "serde")]
 mod serde_impl;
 mod series;

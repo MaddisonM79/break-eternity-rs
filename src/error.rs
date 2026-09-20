@@ -4,7 +4,11 @@ use alloc::string::String;
 use core::num::ParseFloatError;
 
 /// Identifies the category of an arithmetic error.
+///
+/// Marked `#[non_exhaustive]`: new kinds may be added in minor releases, so match with a
+/// wildcard arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ArithmeticErrorKind {
     /// Operation is mathematically undefined (e.g., 0/0, +inf + -inf).
     Undefined,
@@ -16,6 +20,10 @@ pub enum ArithmeticErrorKind {
     OutOfDomain,
     /// Numerical iteration diverged.
     IterationDiverged,
+    /// The value does not fit the target type (integer conversions; infinities included).
+    Overflow,
+    /// The value has a fractional part where a whole number is required.
+    NotInteger,
 }
 
 /// An error produced by a `checked_*` arithmetic operation on [`crate::Decimal`].

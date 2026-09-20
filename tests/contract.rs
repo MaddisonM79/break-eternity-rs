@@ -133,6 +133,14 @@ const UNARY_TOTAL: &[(&str, Plain1)] = &[
     ("tanh", |a| a.tanh()),
     ("asinh", |a| a.asinh()),
     ("p_log10", |a| a.p_log10()),
+    ("fract", |a| a.fract()),
+    ("round_to_places(2)", |a| a.round_to_places(2)),
+    ("round_to_places(-3)", |a| a.round_to_places(-3)),
+    ("floor_to_places(1)", |a| a.floor_to_places(1)),
+    ("ceil_to_places(1)", |a| a.ceil_to_places(1)),
+    ("trunc_to_places(4)", |a| a.trunc_to_places(4)),
+    ("round_to_significant(3)", |a| a.round_to_significant(3)),
+    ("round_to_significant(1)", |a| a.round_to_significant(1)),
 ];
 
 const BINARY_PAIRS: &[(&str, Checked2, Plain2)] = &[

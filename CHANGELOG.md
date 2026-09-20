@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adapter, plus `notation::standard_abbreviation` / `letters_abbreviation` for custom layouts.
   Illion names follow the Antimatter Dimensions scheme; exponents past `1e9` print as `e` +
   logarithm.
+- Rounding that returns a `Decimal`: `round_to_places` / `floor_to_places` / `ceil_to_places` /
+  `trunc_to_places` (negative places allowed) and `round_to_significant` (works at layer 1 by
+  rounding the mantissa). Also `fract` and `is_integer`.
+- Integer interop: `TryFrom<Decimal>` and `TryFrom<&Decimal>` for every primitive integer
+  (exact; `ArithmeticErrorKind::NotInteger` / `Overflow`), and `to_i32/u32/i64/u64/i128/u128/usize_saturating`.
+- `ArithmeticErrorKind` is now `#[non_exhaustive]` with two new variants, `Overflow` and
+  `NotInteger`.
+- `JsDecimal` gained `toNotation`, `roundToPlaces`, `roundToSignificant`, and `isInteger`.
 - `no_std` support. The new `std` feature is on by default; disable it and enable `libm` to
   build for targets without a standard library (`alloc` is still required). The powers-of-ten
   table is now a static array instead of a lazily initialised `Vec`, which also removes an

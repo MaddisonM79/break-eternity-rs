@@ -26,6 +26,11 @@ fn constructs_and_formats() {
     assert_eq!(d("-5").to_fixed(2), "-5.00");
     assert_eq!(d("12345").to_precision(2), "1.2e4");
     assert_eq!(d("Infinity").js_to_string(), "Infinity");
+    assert_eq!(d("1234567").to_notation("standard", 2).unwrap(), "1.23 M");
+    assert!(d("1").to_notation("roman", 2).is_err());
+    assert_eq!(d("19.995").round_to_places(2).js_to_string(), "20");
+    assert_eq!(d("123456").round_to_significant(2).js_to_string(), "120000");
+    assert!(d("1e100").is_integer());
 }
 
 #[wasm_bindgen_test]

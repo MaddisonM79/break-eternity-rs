@@ -74,6 +74,17 @@ imply `std`.
 
 ## Creating a `Decimal`
 
+Integers convert with `From`; floats with `TryFrom` (NaN and infinities are rejected). Going back, `TryFrom<Decimal>` for every integer type is exact (`NotInteger` / `Overflow` on failure) and the `to_*_saturating` methods truncate and clamp:
+
+```rust
+use break_eternity::{ArithmeticErrorKind, Decimal};
+
+assert_eq!(u32::try_from(Decimal::from(42)).unwrap(), 42);
+assert_eq!(i8::try_from(Decimal::from(300)).unwrap_err().kind, ArithmeticErrorKind::Overflow);
+assert_eq!(Decimal::from_finite(7.9).to_u64_saturating(), 7);
+assert_eq!(Decimal::try_from("1e100").unwrap().to_i64_saturating(), i64::MAX);
+```
+
 ```rust
 use break_eternity::Decimal;
 
@@ -232,7 +243,10 @@ All tetration-family methods take a `mode: TetrationMode` argument. `TetrationMo
 
 | Method | Description |
 |--------|-------------|
-| `round` / `floor` / `ceil` / `trunc` | Standard rounding modes (`ceil(1e-20)` is `1`, `floor(-2.5)` is `-3`). |
+| `round` / `floor` / `ceil` / `trunc` / `fract` | Standard rounding modes (`ceil(1e-20)` is `1`, `floor(-2.5)` is `-3`). |
+| `round_to_places` / `floor_to_places` / `ceil_to_places` / `trunc_to_places` | Rounding at a decimal place, returning a `Decimal` (`19.995.round_to_places(2)` is `20`; negative places round to tens, hundreds, ...). |
+| `round_to_significant` | Rounding to significant figures at any layer (`1.23456e100` at 3 digits is `1.23e100`). |
+| `is_integer` | `true` for finite whole numbers (everything at layer 1 and above with positive `mag`). |
 | `cmp` / `cmpabs` | `std::cmp::Ordering`, signed and by magnitude. |
 | `max` / `min` / `maxabs` / `minabs` | Pairwise selection. |
 | `clamp` / `clamp_min` / `clamp_max` | Range clamping. |

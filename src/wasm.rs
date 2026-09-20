@@ -13,6 +13,7 @@ use std::fmt;
 use wasm_bindgen::prelude::*;
 
 use crate::error::ArithmeticError;
+use crate::notation::Notation;
 use crate::tetration::TetrationMode;
 
 /// JavaScript-facing wrapper around [`crate::Decimal`].
@@ -123,6 +124,21 @@ impl JsDecimal {
         self.0.to_precision(places as usize)
     }
 
+    /// Formats in a game notation: `"scientific"`, `"engineering"`, `"standard"`,
+    /// `"letters"`, or `"logarithm"` (case-insensitive). Unknown names are an error.
+    #[wasm_bindgen(js_name = toNotation)]
+    pub fn to_notation(&self, notation: &str, places: u32) -> Result<String, JsError> {
+        let notation = match notation.to_ascii_lowercase().as_str() {
+            "scientific" => Notation::Scientific,
+            "engineering" => Notation::Engineering,
+            "standard" => Notation::Standard,
+            "letters" => Notation::Letters,
+            "logarithm" => Notation::Logarithm,
+            other => return Err(JsError::new(&format!("unknown notation {other:?}"))),
+        };
+        Ok(self.0.to_notation(notation, places as usize))
+    }
+
     /// Scientific-notation formatting with `places` digits after the decimal point.
     #[wasm_bindgen(js_name = toExponential)]
     pub fn to_exponential(&self, places: u32) -> String {
@@ -218,6 +234,24 @@ impl JsDecimal {
     /// Round down.
     pub fn floor(&self) -> JsDecimal {
         JsDecimal(self.0.floor())
+    }
+
+    /// Rounds to `places` digits after the decimal point (negative for tens, hundreds, ...).
+    #[wasm_bindgen(js_name = roundToPlaces)]
+    pub fn round_to_places(&self, places: i32) -> JsDecimal {
+        JsDecimal(self.0.round_to_places(places))
+    }
+
+    /// Rounds to `digits` significant figures.
+    #[wasm_bindgen(js_name = roundToSignificant)]
+    pub fn round_to_significant(&self, digits: u32) -> JsDecimal {
+        JsDecimal(self.0.round_to_significant(digits))
+    }
+
+    /// Whether the value is a finite whole number.
+    #[wasm_bindgen(js_name = isInteger)]
+    pub fn is_integer(&self) -> bool {
+        self.0.is_integer()
     }
 
     /// Round up.
