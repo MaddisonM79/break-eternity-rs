@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 560cc3e7799004652d67237979f3ce6a1d134f6a94c2bd4cd4d91e759d062aaf # shrinks to d = Decimal { sign: 1, layer: 0, mag: 673278813677111.3 }, deep = Decimal { sign: 0, layer: 0, mag: 0.0 }
+cc 3e791f758801409994adf30e98b096eb0fa1965c8b2cf269bd5f2cecab3da785 # shrinks to f = Decimal { sign: 0, layer: 0, mag: 0.0 }, a = Decimal { sign: 0, layer: 0, mag: 0.0 }, p = Decimal { sign: 1, layer: 0, mag: 1.0 }, i = Decimal { sign: 0, layer: 0, mag: 0.0 }, z = Decimal { sign: 1, layer: 1, mag: -17.0 }
+cc 3ef5f4ed0942f040d215b10b9f9ec9be675c171e498a131abd3e007072f2311f # shrinks to f = Decimal { sign: 0, layer: 0, mag: 0.0 }, a = Decimal { sign: 0, layer: 0, mag: 0.0 }, p = Decimal { sign: 1, layer: 0, mag: 1.0 }, i = Decimal { sign: 0, layer: 0, mag: 0.0 }, z = Decimal { sign: 1, layer: 1, mag: 15.957623015111318 }

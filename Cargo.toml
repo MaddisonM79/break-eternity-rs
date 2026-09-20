@@ -1,8 +1,8 @@
 [package]
 name = "break-eternity-rs"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
-rust-version = "1.94"
+rust-version = "1.87"
 license = "MIT"
 description = "Fork of break-eternity: a numerical library to represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308)."
 authors = ["MaddisonM79", "cozyGalvinism <jean@der-capta.in>"]
@@ -12,7 +12,7 @@ documentation = "https://docs.rs/break-eternity-rs"
 keywords = ["big", "decimal", "bigdecimal", "incremental", "games"]
 categories = ["game-development", "mathematics"]
 readme = "README.md"
-exclude = [".gitignore", ".vscode", ".github"]
+exclude = [".gitignore", ".vscode", ".github", "docs", "deny.toml"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -22,23 +22,46 @@ rustdoc-args = ["--cfg", "docsrs"]
 name = "break_eternity"
 
 [dependencies]
-thiserror = "2"
-serde = { version = "1", optional = true }
-gdnative = { version = "0.11", optional = true }
+thiserror = { version = "2", default-features = false }
+libm = { version = "0.2", optional = true }
+serde = { version = "1", optional = true, default-features = false, features = ["alloc"] }
+proptest = { version = "1", optional = true, default-features = false, features = ["std"] }
 godot = { version = "0.5", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 js-sys = { version = "0.3", optional = true }
+bevy_reflect = { version = "0.19", default-features = false, optional = true }
 
 [dev-dependencies]
+postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# proptest and criterion pull in getrandom, which has no default wasm32 backend.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 proptest = "1"
+criterion = { version = "0.8", default-features = false }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[[bench]]
+name = "ops"
+harness = false
 
 [features]
-default = []
-# Transitional alias for one release cycle; will be removed in 0.3.0.
-godot3 = ["dep:gdnative"]
-# Godot 4 via gdext.
-godot4 = ["dep:godot"]
+default = ["std"]
+# Use the standard library. Disable it (and enable `libm`) for `no_std` targets;
+# `alloc` is always required for formatting and parsing.
+std = ["thiserror/std", "serde?/std"]
+# Pure-Rust float math for `no_std` builds. Ignored when `std` is enabled.
+libm = ["dep:libm"]
+# `Serialize` / `Deserialize` for `Decimal` (string form by default; see `serde_components`).
+serde = ["dep:serde"]
+# `proptest::Arbitrary` for `Decimal` and the strategies in `break_eternity::strategy`.
+proptest = ["std", "dep:proptest"]
+# Godot 4 via gdext: `GodotConvert` for `Decimal` and the `GodotDecimal` class. Needs Rust 1.94.
+godot4 = ["std", "dep:godot"]
 # Exposes Decimal to JavaScript via wasm-bindgen.
-wasm = ["dep:wasm-bindgen", "dep:js-sys"]
+wasm = ["std", "dep:wasm-bindgen", "dep:js-sys"]
+# `bevy_reflect::Reflect` (opaque) for `Decimal`, so it can live in reflected components. Needs Rust 1.92.
+bevy_reflect = ["std", "dep:bevy_reflect", "bevy_reflect/std"]

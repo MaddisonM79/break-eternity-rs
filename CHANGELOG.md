@@ -7,6 +7,177 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Notation` (`Scientific`, `Engineering`, `Standard`, `Letters`, `Logarithm`) with
+  `Decimal::to_notation(notation, places)` and the allocation-free `Decimal::display(..)`
+  adapter, plus `notation::standard_abbreviation` / `letters_abbreviation` for custom layouts.
+  Illion names follow the Antimatter Dimensions scheme; exponents past `1e9` print as `e` +
+  logarithm.
+- Rounding that returns a `Decimal`: `round_to_places` / `floor_to_places` / `ceil_to_places` /
+  `trunc_to_places` (negative places allowed) and `round_to_significant` (works at layer 1 by
+  rounding the mantissa). Also `fract` and `is_integer`.
+- Integer interop: `TryFrom<Decimal>` and `TryFrom<&Decimal>` for every primitive integer
+  (exact; `ArithmeticErrorKind::NotInteger` / `Overflow`), and `to_i32/u32/i64/u64/i128/u128/usize_saturating`.
+- `ArithmeticErrorKind` is now `#[non_exhaustive]` with two new variants, `Overflow` and
+  `NotInteger`.
+- `proptest` feature: `Arbitrary for Decimal` with `DecimalParams` (zero / negative /
+  fractional / infinite / max layer) and the presets `finite_decimal`, `any_decimal`,
+  `positive_decimal`, `integer_decimal`, `layer0_decimal` in `break_eternity::strategy`.
+- `serde`: binary formats now get the `(sign, layer, mag)` components instead of a string
+  (17 bytes fixed-width, no parsing on load); human-readable formats keep the string.
+  Deserializing from JSON also accepts plain numbers and `[sign, layer, mag]` arrays, and
+  parse errors name the offending input. `serde_components` and `serde_string` are
+  `#[serde(with)]` adapters that pin one representation. Infinity in component form is
+  `(±1, i64::MAX, 0.0)` so JSON can carry it.
+- `JsDecimal` gained `toNotation`, `roundToPlaces`, `roundToSignificant`, and `isInteger`.
+- `bevy_reflect` feature: `Decimal` derives an opaque `Reflect` (with `Clone`, `Debug`,
+  `PartialEq`, `Hash`, `Default` type data, and `Serialize` / `Deserialize` when `serde` is
+  on), so it can be a field of a reflected Bevy component.
+- `godot4`: `GodotDecimal`, a `RefCounted` class exposing construction, formatting
+  (including `to_notation`), arithmetic, powers and logarithms, tetration, comparison and the
+  series helpers to GDScript. Fallible methods return `null`. `Gd<GodotDecimal>` implements
+  `From<Decimal>`.
+- `no_std` support.
+
+### Changed
+
+- MSRV is `1.87` for the crate and its non-engine features. `bevy_reflect` needs `1.92` and
+  `godot4` keeps needing `1.94` (their dependencies' floors). It was declared as `1.94`
+  across the board.
+- `slog` refines its estimate with a bracketed secant search instead of upstream's 100-step
+  doubling/halving walk. Results agree with `break_eternity.js` to parity tolerance (the
+  fixture gate is unchanged) and are exact where the answer is an integer height (`slog(1)`
+  is `0`, not `6.6e-17`); `slog(ee1000)` is about 7x faster, and everything built on it
+  (`layer_add`, fractional `iteratedlog`, `penta_log`, `"10^^2.5"` literals) speeds up with
+  it. Two ill-conditioned classes now land on different noise than upstream: `layer_add` of a
+  negative or sub-`1/9e15` value, and `layer_add` / negative-height `tetrate` on a base below
+  1, where upstream's search runs away to the base's fixed point. The new `std` feature is on by default; disable it and enable `libm` to
+  build for targets without a standard library (`alloc` is still required). The powers-of-ten
+  table is now a static array instead of a lazily initialised `Vec`, which also removes an
+  atomic load from `to_number()` on the layer-0 fast path.
+
+## [0.5.0] - 2026-09-20
+
+A correctness release. Everything below was found by an audit of the 0.4.0 surface against
+`break_eternity.js` 2.1.3 and a set of edge-case probes; the parity fixture was regenerated
+against the pinned upstream release and now covers 12,414 cases across 60 operations with a
+zero-mismatch gate (see `tests/parity.rs` for the handful of documented, deliberate
+divergences).
+
+### Breaking
+
+- **Infinity is canonical.** `Decimal::inf()` / `neg_inf()` are now `(±1, layer > MAX_SAFE_LAYER, +inf)`.
+  Previously `neg_inf()` was `(-1, 0, -inf)`, `-inf()` did not equal `neg_inf()`, infinity
+  sorted *below* any layer-1 value, `neg_inf().to_number()` was `+inf`, and `neg_inf().abs()`
+  and `inf() * 2` panicked when displayed. `layer()` of an infinity is now a large sentinel.
+- `inf - inf`, `inf + -inf`, `inf * 0`, `inf / inf`, and any remainder involving an infinity
+  are `ArithmeticErrorKind::Undefined` from the `checked_*` methods (and panics from the
+  operators). They used to return `inf`, `0`, or an unprintable value.
+- Any operation whose layer would exceed `MAX_SAFE_LAYER` (9e15) now saturates to infinity.
+  `10.tetrate(1e19)` used to return a value with layer `i64::MAX - 2`.
+- `pow` no longer treats bases or exponents within `1e-10` of `1` as exactly `1`.
+  `(1 + 1e-11)^1e15` was `1.00000000001`; it is now about `10^4343`. Same fix in `mul`'s
+  reciprocal shortcut and `log`'s base-1 check.
+- `pow` with a negative base and a non-integer exponent now panics (`checked_pow` returns
+  `NegativeBase`) instead of returning the positive magnitude. `cbrt(-8)` is `-2` and
+  `root` of a negative number is real for odd integer degrees, matching upstream 2.1.1.
+- `0` raised to a negative power is `DivisionByZero` (was `0`).
+- Every `checked_*` method now maps the internal NaN sentinel to an error, and every
+  panicking method panics instead of returning it. `zero().recip()`, `asin(2)`,
+  `acosh(0.5)`, `checked_tetrate(2, -2)`, `checked_slog(x, 1)`, `checked_ssqrt(-1)`,
+  `checked_pow(0, -1)` were all leaking NaN or panicking inconsistently.
+- `gamma` / `factorial` at the poles (zero and negative integers) return `OutOfDomain`
+  from the checked forms and panic from the plain forms; they used to panic in debug and
+  return garbage in release.
+- `checked_slog` takes the base as a `Decimal` (was `f64`).
+- `lambertw()` returns `Decimal` and panics outside its domain like every other unchecked
+  method; `checked_lambertw()` returns `Result<Decimal, ArithmeticError>`. The
+  `BreakEternityError::LambertWError` and `IterationFailedConverging` variants are gone.
+- `from_components` reduces `sign` to its signum and panics on a negative layer; it used to
+  store `sign = 5` or `layer = -1` verbatim.
+- `minimum()` is `f64::MIN_POSITIVE`; it used to be `(1, 0, f64::MIN)`, an invalid state that
+  displayed as `-1.797e…NaN` and compared greater than zero.
+- `floor` / `ceil` follow the mathematical definition: `floor(-2.5) == -3`,
+  `ceil(-2.5) == -2`, `ceil(1e-20) == 1`, `floor(-1e-20) == -1` (all four were wrong).
+- `exponent()` at layer 2 returned `|mag|^10` instead of `10^|mag|`; `set_mantissa` passed
+  the layer where the exponent was meant. Both fixed.
+- `to_fixed` / `to_precision` keep the sign at layer 0 (`(-5).to_fixed(2)` was `"5.00"`),
+  print the exponent as an integer (`"1.50e100"`, not `"1.50e100.00"`), handle negative
+  exponents (`0.00123.to_precision(2)` is `"0.0012"`, was `"0.0"`), and clamp `places` to
+  `[1, 100]` instead of panicking on `0`.
+- Trig functions with a domain (`asin`, `acos`, `acosh`, `atanh`) panic on out-of-range input
+  and gained `checked_` forms; `asinh` is evaluated on `|x|` to avoid cancellation.
+- `PartialOrd::partial_cmp` returns `None` when either side is the crate-internal NaN
+  sentinel (never observable through the public API); `Ord` is unchanged.
+- The deprecated `from_number`, `from_mantissa_exponent_no_normalize`, `eq_tolerance`,
+  `iteratedexp` and `checked_iteratedexp` are removed.
+- The `godot3` feature (gdnative 0.11, Godot 3) is removed as announced in 0.2.0.
+- `ArithmeticError` is now `Copy + PartialEq + Eq + Hash` and has a `new` constructor.
+- `layer_add` / `layer_add_10` panic on undefined results (they used to return NaN silently);
+  `checked_layer_add` / `checked_layer_add_10` added.
+
+### Added
+
+- Ported from `break_eternity.js` 2.1.3:
+  - The non-principal Lambert W branch: `lambertw_branch(LambertBranch::NonPrincipal)` and
+    `checked_lambertw_branch`.
+  - Tetration of bases in the convergence zone `(0, e^(1/e)]` at fractional heights, the
+    `excess_slog` machinery behind `layer_add` on those bases, the `< 2` rescale of the
+    critical-section table, the two-fixed-point logic for infinite heights, and the 10000
+    iteration caps. Closes #18.
+  - `linear_sroot(degree)`, `penta_log(base, mode)`, `linear_penta_root(degree)` and their
+    `checked_` forms. `ssqrt` now goes through `linear_sroot(2)` (it used the pre-1.4 Lambert
+    formula, which fails for `0.5 < x < 1`).
+  - `InverseSearch`, the port of `increasingInverse`: numerically inverts any strictly
+    monotone `Decimal -> Decimal` function across the whole representable range.
+  - `pentate` uses the 2.1 algorithm (convergence and 2-cycle exits, negative heights via
+    repeated `slog`, fractional heights via `penta_log`).
+  - `rem_floored` / `checked_rem_floored` (floored modulo). Truncated `%` now uses the native
+    `f64` remainder when both operands fit, so `1e20 % 7 == 2` (was `0`).
+  - Tolerance comparisons `approx_ne`, `approx_lt`, `approx_le`, `approx_gt`, `approx_ge`,
+    `cmp_tolerance`.
+  - `pow_base` / `checked_pow_base`, `p_log10`, `checked_abs_log10`, `checked_ln_gamma`,
+    `checked_recip`, `checked_root`, `layer_safe_max()`, `layer_safe_min()`,
+    `MAX_SAFE_LAYER`, `TETRATION_CONVERGENCE_MAX`, `TETRATION_CONVERGENCE_MIN`.
+  - Game helpers: `afford_geometric_series`, `sum_geometric_series`,
+    `afford_arithmetic_series`, `sum_arithmetic_series`, `efficiency_of_purchase`, each with a
+    `checked_` twin.
+- Parser: `eX` with an empty mantissa (`"e3"`), spaced `"N PT M"` / `"N PT (M)"`, the
+  `X^^N;P` and `X^^^N;P` payload forms, the `XfN` / `fN` shorthand, `(e^N)X` with negative or
+  fractional `N`, `inf` / `-inf`, `+5`, and the 2.1.2 subnormal guard. `"(e^-1)5"` used to
+  panic. New `Decimal::from_string_with_mode` threads a `TetrationMode` into literal
+  tetration, `TryFrom<String>` is implemented, and
+  `BreakEternityError::ParseUndefined` distinguishes "valid syntax, undefined value" from
+  malformed input. The parser is fuzzed by proptest and never panics.
+- `to_exponential(places)`.
+- `is_finite`, `is_infinite`, `is_zero`, `is_positive`, `is_negative`.
+- Exact `powf` fast path for layer-0 `pow` (`2^10 == 1024`, `10^-1 == 0.1`) and exact
+  factorials/gamma for integers up to 171.
+- `Sum` / `Product` for `Decimal` and `&Decimal`, `Neg for &Decimal`, `PartialEq` /
+  `PartialOrd` between `Decimal` and every primitive numeric type, `From<i128 / u128 / isize /
+  usize>`, `AddAssign` and friends with `&Decimal`.
+- `wasm`: `JsDecimal` now exposes formatting, component getters, rounding, the log/pow/root
+  family, gamma, Lambert W, tetration, `slog`, `ssqrt`, `pentate`, comparisons, clamping, and
+  the game helpers, all throwing on undefined results. Tests in `tests/wasm.rs` run under
+  `wasm-bindgen-test` in CI.
+- `tests/contract.rs`: property tests that every `checked_*` method never panics and never
+  returns NaN, every plain method panics exactly when its checked twin errs and otherwise
+  agrees with it, and every returned value is normalized and survives a `Display` round-trip.
+- `docs/DESIGN.md` describing the representation, the raw / checked / panicking layering, the
+  NaN-sentinel comparison rules, and the parity policy.
+- Criterion benchmarks (`cargo bench`) and two runnable examples (`idle_loop`, `formatting`).
+- CI: `wasm32` test job, `cargo semver-checks`, `cargo deny`, pinned action bumps; issue
+  and PR templates; `CODEOWNERS`.
+
+### Fixed
+
+- Trig precision policy documented (closes #15): `sin` / `cos` / `tan` return `0` at
+  layer ≥ 1 because the phase is unresolvable in `f64`.
+- README, `SECURITY.md`, `CONTRIBUTING.md`, and `Cargo.toml` no longer reference removed
+  features, stale version pins, or the "0.3.0" removal date for `godot3`; the changelog
+  footer links cover every release.
+
 ## [0.4.0] - 2026-06-03
 
 ### Added
@@ -98,6 +269,9 @@ These join the existing `TryFrom<&str>` impl; all three delegate to the same par
 
 ### Known parity divergences (from break_eternity.js)
 
+> Historical: every item in this list was fixed by 0.3.0, and 0.5.0 regenerated the fixture with
+> a zero-mismatch gate. Kept for the record.
+
 - **gamma / factorial** (~1.0%): The Stirling-series implementation in the
   Rust port produces severely incorrect values for non-integer and small
   arguments (e.g. `gamma(0.5)` gives `10^214` instead of `1.77`). This is
@@ -185,6 +359,10 @@ These join the existing `TryFrom<&str>` impl; all three delegate to the same par
 - **Known issue (fixed in 0.2.0)**: published `repository` and `homepage` URLs link to a non-existent GitHub repo.
 - **Known issue (fixed in 0.2.0)**: published `authors` field exposed a personal email address.
 
-[Unreleased]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/MaddisonM79/break-eternity-rs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/MaddisonM79/break-eternity-rs/releases/tag/v0.1.0

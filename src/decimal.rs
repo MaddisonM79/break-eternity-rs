@@ -1,46 +1,80 @@
-//! Core [`Decimal`] struct definition, constructors, normalization, and accessors.
+//! Core [`Decimal`] struct definition, constructors, normalization, accessors,
+//! rounding, and comparison.
 
-use crate::constants::{power_of_10, EXPONENT_LIMIT, FIRST_NEG_LAYER, LAYER_REDUCTION_THRESHOLD};
-use crate::utils::sign;
+use core::cmp::Ordering;
+
+#[cfg(feature = "bevy_reflect")]
+use bevy_reflect::prelude::ReflectDefault;
+#[cfg(all(feature = "bevy_reflect", feature = "serde"))]
+use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
+
+use crate::constants::{
+    power_of_10, EXPONENT_LIMIT, FIRST_NEG_LAYER, INFINITE_LAYER, LAYER_REDUCTION_THRESHOLD,
+    MAX_SAFE_LAYER,
+};
+use crate::error::ArithmeticError;
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+// shadowed by std's inherent methods whenever std is in the crate graph
+use crate::math::FloatExt;
+use crate::utils::{f_maglog10, sign};
 
 /// A Decimal number that can represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308).
+///
+/// The value is `sign * 10^10^10^...(layer times) mag`. See the crate-level documentation for
+/// the normalization invariant.
+///
+/// # Infinity
+///
+/// Positive and negative infinity are representable and canonical: both have
+/// `mag == f64::INFINITY` and a layer above [`MAX_SAFE_LAYER`], with `sign` carrying the
+/// direction. Any operation whose layer would exceed `MAX_SAFE_LAYER` saturates to infinity.
+/// Infinity compares above (or below) every finite value, and `+inf - inf`, `inf * 0`, and
+/// `inf / inf` are reported as [`ArithmeticErrorKind::Undefined`](crate::ArithmeticErrorKind::Undefined)
+/// by the `checked_*` methods (the operator forms panic).
 #[derive(Clone, Copy, Debug, Default)]
+#[cfg_attr(
+    feature = "bevy_reflect",
+    derive(bevy_reflect::Reflect),
+    reflect(opaque, Clone, Debug, PartialEq, Hash, Default)
+)]
+#[cfg_attr(
+    all(feature = "bevy_reflect", feature = "serde"),
+    reflect(Serialize, Deserialize)
+)]
 pub struct Decimal {
     /// Sign of the Decimal. 1 for positive, -1 for negative, 0 for zero.
     pub(crate) sign: i8,
     /// Layer of magnitude.
     pub(crate) layer: i64,
     /// Internal mag value. Interpretation depends on `layer`: at layer 0 this is the
-    /// signed magnitude; at layer 1 this is log10(|value|); at layer >= 2 this is the
+    /// unsigned magnitude; at layer 1 this is log10(|value|); at layer >= 2 this is the
     /// deeply-iterated log.
     pub(crate) mag: f64,
 }
 
+// ---------------------------------------------------------------------------
+// Constructors and accessors
+// ---------------------------------------------------------------------------
+
 impl Decimal {
     /// Creates a new Decimal without normalization.
-    ///
-    /// This does not normalize the Decimal; use [`Decimal::from_components`] for automatic normalization.
-    #[allow(dead_code)] // pub(crate) helper available for future internal callers
-    pub(crate) fn new(sign: i8, layer: i64, mag: f64) -> Decimal {
+    pub(crate) const fn new_unchecked(sign: i8, layer: i64, mag: f64) -> Decimal {
         Decimal { sign, layer, mag }
     }
 
     /// Returns the mantissa of the Decimal.
+    ///
+    /// At layer 0 this is the signed mantissa in `[1, 10)`; at layer 1 it is `sign * 10^frac(mag)`;
+    /// at higher layers the mantissa is not meaningful and the sign is returned.
     pub fn mantissa(&self) -> f64 {
         if self.sign == 0 {
             return 0.0;
         }
 
         if self.layer == 0 {
-            let exp = self.mag.abs().log10().floor();
-            // handle special case 5e-324
-            let man = if (self.mag - 5e-324).abs() < 1e-10 {
-                5.0
-            } else {
-                self.mag / power_of_10(exp as i32)
-            };
-
-            return self.sign as f64 * man;
+            let exp = self.mag.log10().floor();
+            return self.sign as f64 * self.mag / power_of_10(exp as i32);
         }
 
         if self.layer == 1 {
@@ -51,21 +85,25 @@ impl Decimal {
         self.sign as f64
     }
 
-    /// Sets the mantissa of the Decimal.
+    /// Sets the mantissa of the Decimal, keeping the exponent.
+    ///
+    /// At layers above 2 the mantissa is not meaningful, so only the sign is updated.
     pub fn set_mantissa(&mut self, m: f64) {
         if self.layer <= 2 {
-            self.set_from_mantissa_exponent(m, self.layer as f64);
+            let e = self.exponent();
+            self.set_from_mantissa_exponent(m, e);
         } else {
-            // this mantissa isn't meaningful
             self.sign = sign(m);
             if self.sign == 0 {
-                self.layer = 0;
-                self.set_exponent(0.0);
+                *self = Decimal::zero();
             }
         }
     }
 
-    /// Returns the exponent of the Decimal.
+    /// Returns the base-10 exponent of the Decimal.
+    ///
+    /// At layer 0 this is `floor(log10(|x|))`; at layer 1 it is `floor(mag)`; at layer 2 it is
+    /// `floor(±10^|mag|)`; beyond that it is `±infinity`.
     pub fn exponent(&self) -> f64 {
         if self.sign == 0 {
             return 0.0;
@@ -80,30 +118,33 @@ impl Decimal {
         }
 
         if self.layer == 2 {
-            return (sign(self.mag) as f64 * self.mag.abs().powf(10.0)).floor();
+            return (sign(self.mag) as f64 * 10.0_f64.powf(self.mag.abs())).floor();
         }
 
         self.mag * f64::INFINITY
     }
 
-    /// Sets the exponent of the Decimal.
+    /// Sets the exponent of the Decimal, keeping the mantissa.
     pub fn set_exponent(&mut self, e: f64) {
-        self.set_from_mantissa_exponent(self.mantissa(), e);
+        let m = self.mantissa();
+        self.set_from_mantissa_exponent(m, e);
     }
 
-    /// Returns the sign of the Decimal.
+    /// Returns the sign of the Decimal: `1`, `0`, or `-1`.
     pub fn sign(&self) -> i8 {
         self.sign
     }
 
     /// Returns the layer of the Decimal.
+    ///
+    /// For infinity this is a sentinel value above [`MAX_SAFE_LAYER`].
     pub fn layer(&self) -> i64 {
         self.layer
     }
 
     /// Returns the internal mag value.
     ///
-    /// Interpretation depends on `layer`: at layer 0 this is the signed magnitude; at layer 1
+    /// Interpretation depends on `layer`: at layer 0 this is the unsigned magnitude; at layer 1
     /// this is log10(|value|); at layer >= 2 this is the deeply-iterated log.
     pub fn mag(&self) -> f64 {
         self.mag
@@ -111,15 +152,24 @@ impl Decimal {
 
     /// Creates a Decimal from a sign, a layer and a magnitude.
     ///
-    /// This function normalizes the inputs.
+    /// `sign` is reduced to its signum, so any positive value means `+` and any negative value
+    /// means `-`. The result is normalized.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `layer` is negative.
     pub fn from_components(sign: i8, layer: i64, mag: f64) -> Decimal {
-        Decimal::default().set_from_components(sign, layer, mag)
+        assert!(
+            layer >= 0,
+            "Decimal::from_components: layer must be non-negative, got {layer}"
+        );
+        Decimal::default().set_from_components(sign.signum(), layer, mag)
     }
 
     /// Creates a Decimal from a sign, a layer and a magnitude without normalizing.
     ///
     /// The caller must ensure the inputs already satisfy the normalization invariant.
-    pub(crate) fn from_components_unchecked(sign: i8, layer: i64, mag: f64) -> Decimal {
+    pub(crate) const fn from_components_unchecked(sign: i8, layer: i64, mag: f64) -> Decimal {
         Decimal { sign, layer, mag }
     }
 
@@ -130,57 +180,11 @@ impl Decimal {
         Decimal::default().set_from_mantissa_exponent(m, e)
     }
 
-    /// Creates a Decimal from a mantissa and an exponent without normalizing.
-    ///
-    /// The caller must ensure the inputs already satisfy the normalization invariant.
-    #[allow(dead_code)] // pub(crate) helper available for future internal callers
-    pub(crate) fn from_mantissa_exponent_unchecked(m: f64, e: f64) -> Decimal {
-        Decimal {
-            sign: sign(m),
-            layer: 1,
-            mag: e + m.abs().log10(),
-        }
-    }
-
-    /// Creates a Decimal from a mantissa and an exponent.
-    ///
-    /// This function normalizes the inputs. Formerly `from_mantissa_exponent_no_normalize`,
-    /// which was a misnomer — the implementation always normalized.
-    #[deprecated(
-        note = "use from_mantissa_exponent; this normalizing alias will be removed in a future release"
-    )]
-    pub fn from_mantissa_exponent_no_normalize(m: f64, e: f64) -> Decimal {
-        Decimal::from_mantissa_exponent(m, e)
-    }
-
-    /// Creates a Decimal from a number (f64).
-    ///
-    /// # Deprecated
-    ///
-    /// Use [`Decimal::from_finite`] for an infallible constructor that asserts finiteness in
-    /// debug builds, or [`TryFrom<f64>`] for an explicit fallible path that rejects NaN and
-    /// infinite values.
-    #[deprecated(note = "use Decimal::from_finite or TryFrom<f64>")]
-    pub fn from_number(n: f64) -> Decimal {
-        if n.is_nan() {
-            return Decimal::nan_sentinel();
-        }
-
-        if n.is_infinite() && n.is_sign_positive() {
-            return Decimal::inf();
-        }
-
-        if n.is_infinite() && n.is_sign_negative() {
-            return Decimal::neg_inf();
-        }
-
-        Decimal::default().set_from_number(n)
-    }
-
     /// Creates a `Decimal` from a finite `f64`.
     ///
     /// In debug builds this asserts that `x` is finite. In release builds the assertion is
-    /// elided but the behavior is otherwise identical to `TryFrom<f64>::try_from(x).unwrap()`.
+    /// elided; an infinite input then produces the corresponding infinity and a NaN input
+    /// produces an unspecified value. Use [`TryFrom<f64>`] for an explicit fallible path.
     ///
     /// # Panics (debug only)
     ///
@@ -190,32 +194,49 @@ impl Decimal {
             x.is_finite(),
             "from_finite called with non-finite value: {x}"
         );
+        Decimal::from_f64(x)
+    }
+
+    /// Creates a `Decimal` from any `f64`, mapping `±inf` to the canonical infinities and NaN
+    /// to the internal NaN sentinel.
+    pub(crate) fn from_f64(x: f64) -> Decimal {
         Decimal::default().set_from_number(x)
     }
 
-    /// Normalizes the Decimal as follows:
+    /// Normalizes the Decimal in place and returns a copy.
     ///
-    /// * Whenever we are partially 0 (sign is 0 or mag and layer is 0), make it fully 0.
-    /// * Whenever we are at or hit layer 0, extract sign from negative mag.
-    /// * If layer === 0 and mag < `FIRST_NEG_LAYER` (1/9e15), shift to 'first negative layer' (add layer, log10 mag).
-    /// * While abs(mag) > `EXP_LIMIT` (9e15), layer += 1, mag = maglog10(mag).
-    /// * While abs(mag) < `LAYER_DOWN` (15.954) and layer > 0, layer -= 1, mag = pow(10, mag).
-    /// * When we're done, all of the following should be true OR one of the numbers is not finite OR layer is not an integer (error state):
-    ///     * Any 0 is totally zero (0, 0, 0).
-    ///     * Anything layer 0 has mag 0 OR mag > 1/9e15 and < 9e15.
-    ///     * Anything layer 1 or higher has abs(mag) >= 15.954 and < 9e15.
-    /// * We will assume in calculations that all Decimals are either erroneous or satisfy these criteria. (Otherwise: Garbage in, garbage out.)
+    /// * Any NaN component makes the value the internal NaN sentinel.
+    /// * Any zero (sign 0, or `mag == 0` at layer 0, or `mag == -inf` above layer 0) becomes
+    ///   `(0, 0, 0)`.
+    /// * At layer 0 the sign is extracted from a negative `mag`.
+    /// * An infinite `mag`, or a layer above [`MAX_SAFE_LAYER`], becomes the canonical infinity.
+    /// * If `layer == 0` and `mag < FIRST_NEG_LAYER` (1/9e15), shift to the first negative layer.
+    /// * If `|mag| >= EXP_LIMIT` (9e15), increment the layer and take `log10`.
+    /// * While `|mag| < LAYER_DOWN` (15.954) and `layer > 0`, decrement the layer and take `10^mag`.
+    /// * `-0.0` is canonicalized to `0.0` so that `Eq` and `Hash` agree.
     pub fn normalize(&mut self) -> Decimal {
-        if self.sign == 0 || (self.mag == 0.0 && self.layer == 0) {
-            self.sign = 0;
-            self.layer = 0;
-            self.mag = 0.0;
+        if self.mag.is_nan() {
+            *self = Decimal::nan_sentinel();
+            return *self;
+        }
+
+        if self.sign == 0
+            || (self.mag == 0.0 && self.layer == 0)
+            || (self.mag == f64::NEG_INFINITY && self.layer > 0)
+        {
+            *self = Decimal::zero();
             return *self;
         }
 
         if self.layer == 0 && self.mag < 0.0 {
             self.mag = -self.mag;
             self.sign = -self.sign;
+        }
+
+        if self.mag.is_infinite() || self.layer > MAX_SAFE_LAYER {
+            self.layer = INFINITE_LAYER;
+            self.mag = f64::INFINITY;
+            return *self;
         }
 
         if self.layer == 0 && self.mag < FIRST_NEG_LAYER {
@@ -230,6 +251,10 @@ impl Decimal {
         if abs_mag >= EXPONENT_LIMIT {
             self.layer += 1;
             self.mag = sign_mag * abs_mag.log10();
+            if self.layer > MAX_SAFE_LAYER {
+                self.layer = INFINITE_LAYER;
+                self.mag = f64::INFINITY;
+            }
             return *self;
         }
 
@@ -273,23 +298,6 @@ impl Decimal {
         *self
     }
 
-    /// Sets the components of the Decimal from a sign, a layer and a magnitude without normalizing.
-    ///
-    /// The caller is responsible for ensuring the result satisfies the normalization invariant.
-    #[allow(dead_code)] // pub(crate) helper available for future internal callers
-    pub(crate) fn set_from_components_unchecked(
-        &mut self,
-        sign: i8,
-        layer: i64,
-        mag: f64,
-    ) -> Decimal {
-        self.sign = sign;
-        self.layer = layer;
-        self.mag = mag;
-
-        *self
-    }
-
     /// Sets the components of the Decimal from a mantissa and an exponent.
     ///
     /// This function normalizes the inputs.
@@ -303,19 +311,10 @@ impl Decimal {
         *self
     }
 
-    /// Sets the components of the Decimal from a mantissa and an exponent.
-    ///
-    /// Despite the name, this always normalizes. Kept for internal call-site compatibility.
-    /// Prefer [`set_from_mantissa_exponent`](Self::set_from_mantissa_exponent).
-    #[allow(dead_code)] // pub(crate) helper available for future internal callers
-    pub(crate) fn set_from_mantissa_exponent_unchecked(&mut self, m: f64, e: f64) -> Decimal {
-        // NOTE: the former "no_normalize" variant called the normalizing version anyway;
-        // that was a bug in the original code. This variant is now truly unchecked in name
-        // only — callers that need a genuinely non-normalizing path should set fields directly.
-        self.set_from_mantissa_exponent(m, e)
-    }
-
     /// Sets the components of the Decimal from a number (f64).
+    ///
+    /// Infinite inputs become the canonical infinities; NaN becomes an internal sentinel that
+    /// every `checked_*` method reports as an error.
     pub fn set_from_number(&mut self, n: f64) -> Decimal {
         self.sign = sign(n);
         self.layer = 0;
@@ -326,7 +325,13 @@ impl Decimal {
     }
 
     /// Returns the Decimal as a number (f64).
+    ///
+    /// Values beyond the `f64` range saturate to `±inf` (or `0` for tiny values).
     pub fn to_number(&self) -> f64 {
+        if self.is_infinite() {
+            return self.sign as f64 * f64::INFINITY;
+        }
+
         if self.layer == 0 {
             return self.sign as f64 * self.mag;
         }
@@ -346,16 +351,17 @@ impl Decimal {
         }
     }
 
-    /// Returns the mantissa with the specified amount of decimal places.
+    /// Returns the mantissa rounded to the specified number of decimal places.
     pub fn mantissa_with_decimal_places(&self, places: i32) -> f64 {
-        if self.mantissa() == 0.0 {
+        let m = self.mantissa();
+        if m == 0.0 {
             return 0.0;
         }
 
-        crate::format::decimal_places(self.mantissa(), places)
+        crate::format::decimal_places(m, places)
     }
 
-    /// Returns the magnitude with the specified amount of decimal places.
+    /// Returns the magnitude rounded to the specified number of decimal places.
     pub fn magnitude_with_decimal_places(&self, places: i32) -> f64 {
         if self.mag == 0.0 {
             return 0.0;
@@ -364,42 +370,33 @@ impl Decimal {
         crate::format::decimal_places(self.mag, places)
     }
 
-    /// Returns the absolute value of the Decimal.
-    pub fn abs(&self) -> Decimal {
-        Decimal::from_components_unchecked(i8::from(self.sign != 0), self.layer, self.mag)
+    // -----------------------------------------------------------------------
+    // Predicates
+    // -----------------------------------------------------------------------
+
+    /// Returns `true` if the value is neither infinite nor the internal NaN sentinel.
+    pub fn is_finite(&self) -> bool {
+        self.mag.is_finite()
     }
 
-    /// Returns a zero Decimal.
-    pub fn zero() -> Decimal {
-        Decimal::from_components_unchecked(0, 0, 0.0)
+    /// Returns `true` if the value is positive or negative infinity.
+    pub fn is_infinite(&self) -> bool {
+        self.mag.is_infinite()
     }
 
-    /// Returns a one Decimal.
-    pub fn one() -> Decimal {
-        Decimal::from_components_unchecked(1, 0, 1.0)
+    /// Returns `true` if the value is exactly zero.
+    pub fn is_zero(&self) -> bool {
+        self.sign == 0
     }
 
-    /// Returns a negative one Decimal.
-    pub fn neg_one() -> Decimal {
-        Decimal::from_components_unchecked(-1, 0, 1.0)
+    /// Returns `true` if the value is greater than zero.
+    pub fn is_positive(&self) -> bool {
+        self.sign > 0
     }
 
-    /// Returns a two Decimal.
-    pub fn two() -> Decimal {
-        Decimal::from_components_unchecked(1, 0, 2.0)
-    }
-
-    /// Returns a ten Decimal.
-    pub fn ten() -> Decimal {
-        Decimal::from_components_unchecked(1, 0, 10.0)
-    }
-
-    /// Returns an internal NaN sentinel used during transient iteration loops.
-    ///
-    /// Not exposed publicly — after Phase 4c, callers that previously returned NaN
-    /// should return `Err(ArithmeticError { ... })` instead.
-    pub(crate) fn nan_sentinel() -> Decimal {
-        Decimal::from_components_unchecked(0, 0, f64::NAN)
+    /// Returns `true` if the value is less than zero.
+    pub fn is_negative(&self) -> bool {
+        self.sign < 0
     }
 
     /// Returns true if this Decimal carries a NaN mag (internal sentinel state).
@@ -407,84 +404,161 @@ impl Decimal {
         self.mag.is_nan()
     }
 
-    /// Returns a positive infinity Decimal.
-    pub fn inf() -> Decimal {
-        Decimal::from_components_unchecked(1, 0, f64::INFINITY)
+    /// Converts an internal NaN sentinel into an `Undefined` error for operation `op`.
+    pub(crate) fn nan_to_err(self, op: &'static str) -> Result<Decimal, ArithmeticError> {
+        if self.has_nan_mag() {
+            Err(ArithmeticError::undefined(op))
+        } else {
+            Ok(self)
+        }
     }
 
-    /// Returns a negative infinity Decimal.
-    pub fn neg_inf() -> Decimal {
-        Decimal::from_components_unchecked(-1, 0, f64::NEG_INFINITY)
+    // -----------------------------------------------------------------------
+    // Constants
+    // -----------------------------------------------------------------------
+
+    /// Returns the absolute value of the Decimal.
+    pub fn abs(&self) -> Decimal {
+        Decimal::from_components_unchecked(i8::from(self.sign != 0), self.layer, self.mag)
     }
 
-    /// Returns the largest safe Decimal that can be represented from an f64.
+    /// Returns a zero Decimal.
+    pub const fn zero() -> Decimal {
+        Decimal::new_unchecked(0, 0, 0.0)
+    }
+
+    /// Returns a one Decimal.
+    pub const fn one() -> Decimal {
+        Decimal::new_unchecked(1, 0, 1.0)
+    }
+
+    /// Returns a negative one Decimal.
+    pub const fn neg_one() -> Decimal {
+        Decimal::new_unchecked(-1, 0, 1.0)
+    }
+
+    /// Returns a two Decimal.
+    pub const fn two() -> Decimal {
+        Decimal::new_unchecked(1, 0, 2.0)
+    }
+
+    /// Returns a ten Decimal.
+    pub const fn ten() -> Decimal {
+        Decimal::new_unchecked(1, 0, 10.0)
+    }
+
+    /// Returns an internal NaN sentinel used during transient iteration loops.
+    ///
+    /// Not exposed publicly — every `checked_*` method converts it into an error before
+    /// returning, and the panicking forms panic instead.
+    pub(crate) const fn nan_sentinel() -> Decimal {
+        Decimal::new_unchecked(0, 0, f64::NAN)
+    }
+
+    /// Returns positive infinity.
+    pub const fn inf() -> Decimal {
+        Decimal::new_unchecked(1, INFINITE_LAYER, f64::INFINITY)
+    }
+
+    /// Returns negative infinity.
+    pub const fn neg_inf() -> Decimal {
+        Decimal::new_unchecked(-1, INFINITE_LAYER, f64::INFINITY)
+    }
+
+    /// Returns the largest finite `f64` (`f64::MAX`) lifted into a Decimal.
     pub fn maximum() -> Decimal {
-        Decimal::from_components_unchecked(1, 0, f64::MAX)
+        Decimal::from_finite(f64::MAX)
     }
 
-    /// Returns the smallest safe Decimal that can be represented from an f64.
+    /// Returns the smallest positive normal `f64` (`f64::MIN_POSITIVE`) lifted into a Decimal.
     pub fn minimum() -> Decimal {
-        Decimal::from_components_unchecked(1, 0, f64::MIN)
+        Decimal::from_finite(f64::MIN_POSITIVE)
     }
 
-    /// Rounds the Decimal to the nearest integer.
+    /// Returns the largest Decimal at which adding one to the layer is still a safe operation,
+    /// approximately `10^^9e15`. Larger values saturate to [`inf`](Self::inf).
+    pub fn layer_safe_max() -> Decimal {
+        Decimal::from_components_unchecked(1, MAX_SAFE_LAYER, EXPONENT_LIMIT - 1.0)
+    }
+
+    /// Returns the smallest positive Decimal at which subtracting one from the layer is still a
+    /// safe operation, approximately `1 / 10^^9e15`.
+    pub fn layer_safe_min() -> Decimal {
+        Decimal::from_components_unchecked(1, MAX_SAFE_LAYER, -(EXPONENT_LIMIT - 1.0))
+    }
+
+    // -----------------------------------------------------------------------
+    // Rounding
+    // -----------------------------------------------------------------------
+
+    /// Rounds the Decimal to the nearest integer (half away from zero).
     pub fn round(&self) -> Decimal {
         if self.mag < 0.0 {
             return Decimal::zero();
         }
 
         if self.layer == 0 {
-            return Decimal::from_components(self.sign, 0, self.mag.round());
+            return Decimal::from_f64((self.sign as f64 * self.mag).round());
         }
 
         *self
     }
 
-    /// Returns the largest Decimal less than or equal to the Decimal.
+    /// Returns the largest integer less than or equal to the Decimal.
     pub fn floor(&self) -> Decimal {
         if self.mag < 0.0 {
-            return Decimal::zero();
+            return if self.sign == -1 {
+                Decimal::neg_one()
+            } else {
+                Decimal::zero()
+            };
         }
 
         if self.layer == 0 {
-            return Decimal::from_components(self.sign, 0, self.mag.floor());
+            return Decimal::from_f64((self.sign as f64 * self.mag).floor());
         }
 
         *self
     }
 
-    /// Returns the smallest Decimal greater than or equal to the Decimal.
+    /// Returns the smallest integer greater than or equal to the Decimal.
     pub fn ceil(&self) -> Decimal {
         if self.mag < 0.0 {
-            return Decimal::zero();
+            return if self.sign == 1 {
+                Decimal::one()
+            } else {
+                Decimal::zero()
+            };
         }
 
         if self.layer == 0 {
-            return Decimal::from_components(self.sign, 0, self.mag.ceil());
+            return Decimal::from_f64((self.sign as f64 * self.mag).ceil());
         }
 
         *self
     }
 
-    /// Returns the integer part of the Decimal.
+    /// Returns the integer part of the Decimal (rounding toward zero).
     pub fn trunc(&self) -> Decimal {
         if self.mag < 0.0 {
             return Decimal::zero();
         }
 
         if self.layer == 0 {
-            return Decimal::from_components(self.sign, 0, self.mag.trunc());
+            return Decimal::from_f64((self.sign as f64 * self.mag).trunc());
         }
 
         *self
     }
 
+    // -----------------------------------------------------------------------
+    // Comparison, min/max, clamp
+    // -----------------------------------------------------------------------
+
     /// Compares the absolute values of two Decimals.
     ///
-    /// Returns an [`std::cmp::Ordering`] indicating the relative order of `|self|` and `|rhs|`.
-    pub fn cmpabs(&self, rhs: &Decimal) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
-
+    /// Returns an [`Ordering`] indicating the relative order of `|self|` and `|rhs|`.
+    pub fn cmpabs(&self, rhs: &Decimal) -> Ordering {
         let layer_a = if self.mag > 0.0 {
             self.layer
         } else {
@@ -492,27 +566,12 @@ impl Decimal {
         };
         let layer_b = if rhs.mag > 0.0 { rhs.layer } else { -rhs.layer };
 
-        if layer_a > layer_b {
-            return Ordering::Greater;
-        }
-
-        if layer_a < layer_b {
-            return Ordering::Less;
-        }
-
-        if self.mag > rhs.mag {
-            return Ordering::Greater;
-        }
-
-        if self.mag < rhs.mag {
-            return Ordering::Less;
-        }
-
-        Ordering::Equal
+        layer_a
+            .cmp(&layer_b)
+            .then_with(|| self.mag.partial_cmp(&rhs.mag).unwrap_or(Ordering::Equal))
     }
 
-    /// Compares the absolute value of the Decimal to the absolute value of the other Decimal
-    /// and returns the bigger one.
+    /// Returns whichever of the two Decimals has the larger absolute value.
     pub fn maxabs(&self, rhs: Decimal) -> Decimal {
         if self.cmpabs(&rhs).is_gt() {
             *self
@@ -521,30 +580,13 @@ impl Decimal {
         }
     }
 
-    /// Compares the absolute value of the Decimal to the absolute value of the other Decimal
-    /// and returns the smaller one.
+    /// Returns whichever of the two Decimals has the smaller absolute value.
     pub fn minabs(&self, rhs: Decimal) -> Decimal {
         if self.cmpabs(&rhs).is_gt() {
             rhs
         } else {
             *self
         }
-    }
-
-    /// Returns the reciprocal of the Decimal.
-    ///
-    /// Returns a NaN sentinel if the value is zero; callers that need explicit error handling
-    /// should use [`checked_div`](Self::checked_div) instead.
-    pub fn recip(&self) -> Decimal {
-        if self.mag == 0.0 {
-            return Decimal::nan_sentinel();
-        }
-
-        if self.layer == 0 {
-            return Decimal::from_components(self.sign, 0, 1.0 / self.mag);
-        }
-
-        Decimal::from_components(self.sign, self.layer, -self.mag)
     }
 
     /// Returns the bigger of the two Decimals.
@@ -580,10 +622,15 @@ impl Decimal {
         self.min(max)
     }
 
+    // -----------------------------------------------------------------------
+    // Tolerance comparisons
+    // -----------------------------------------------------------------------
+
     /// Returns true if `self` and `other` are approximately equal within the given relative tolerance.
     ///
     /// Tolerance is relative: two numbers are considered equal if their difference is no greater
     /// than `tolerance * max(|self.mag|, |other.mag|)` (after adjusting for layer differences).
+    /// Infinities are approximately equal only to themselves.
     ///
     /// # Example
     ///
@@ -600,6 +647,10 @@ impl Decimal {
             return false;
         }
 
+        if self.is_infinite() || other.is_infinite() {
+            return self == other;
+        }
+
         if (self.layer - other.layer).abs() > 1 {
             return false;
         }
@@ -607,198 +658,47 @@ impl Decimal {
         let mut mag_a = self.mag;
         let mut mag_b = other.mag;
         if self.layer > other.layer {
-            mag_b = crate::utils::f_maglog10(mag_b);
+            mag_b = f_maglog10(mag_b);
         }
         if other.layer > self.layer {
-            mag_a = crate::utils::f_maglog10(mag_a);
+            mag_a = f_maglog10(mag_a);
         }
 
         (mag_a - mag_b).abs() <= tolerance * mag_a.abs().max(mag_b.abs())
     }
 
-    /// Returns true if `self` and `other` are approximately equal within the given relative tolerance.
-    ///
-    /// # Deprecated
-    ///
-    /// Use [`approx_eq`](Self::approx_eq) instead.
-    #[deprecated(note = "use approx_eq")]
-    pub fn eq_tolerance(&self, other: &Decimal, tolerance: f64) -> bool {
-        self.approx_eq(other, tolerance)
+    /// Returns true if `self` and `other` are *not* approximately equal within `tolerance`.
+    pub fn approx_ne(&self, other: &Decimal, tolerance: f64) -> bool {
+        !self.approx_eq(other, tolerance)
     }
 
-    /// Returns the Decimal squared.
-    pub fn sqr(&self) -> Decimal {
-        #[allow(deprecated)]
-        self.pow(Decimal::from_number(2.0))
-    }
-
-    /// Returns the square root of the Decimal.
-    pub fn sqrt(&self) -> Decimal {
-        if self.layer == 0 {
-            #[allow(deprecated)]
-            return Decimal::from_number((self.sign as f64 * self.mag).sqrt());
+    /// Compares two Decimals, treating values within `tolerance` of each other as equal.
+    pub fn cmp_tolerance(&self, other: &Decimal, tolerance: f64) -> Ordering {
+        if self.approx_eq(other, tolerance) {
+            Ordering::Equal
+        } else {
+            self.cmp(other)
         }
-
-        if self.layer == 1 {
-            // For positive mag the value is large (10^mag) and sqrt promotes to layer 2.
-            // For negative mag the value is tiny (10^mag, with mag < 0); sqrt(10^mag)
-            // = 10^(mag/2). Stay at layer 1 and let normalize() demote if needed.
-            if self.mag >= 0.0 {
-                return Decimal::from_components(
-                    1,
-                    2,
-                    self.mag.log10() - std::f64::consts::LOG10_2,
-                );
-            }
-            return Decimal::from_components(self.sign, 1, self.mag / 2.0);
-        }
-
-        let mut result = Decimal::from_components_unchecked(self.sign, self.layer - 1, self.mag)
-            / Decimal::from_components_unchecked(1, 0, 2.0);
-        result.layer += 1;
-        result.normalize();
-
-        result
     }
 
-    /// Returns the Decimal cubed.
-    pub fn cube(&self) -> Decimal {
-        #[allow(deprecated)]
-        self.pow(Decimal::from_number(3.0))
+    /// Returns true if `self < other` and the two are not within `tolerance` of each other.
+    pub fn approx_lt(&self, other: &Decimal, tolerance: f64) -> bool {
+        !self.approx_eq(other, tolerance) && self < other
     }
 
-    /// Returns the cube root of the Decimal.
-    pub fn cbrt(&self) -> Decimal {
-        #[allow(deprecated)]
-        self.pow(Decimal::from_number(1.0) / Decimal::from_number(3.0))
+    /// Returns true if `self < other` or the two are within `tolerance` of each other.
+    pub fn approx_le(&self, other: &Decimal, tolerance: f64) -> bool {
+        self.approx_eq(other, tolerance) || self < other
     }
 
-    /// Returns the n-th root of the Decimal.
-    pub fn root(self, n: Decimal) -> Decimal {
-        self.pow(n.recip())
+    /// Returns true if `self > other` and the two are not within `tolerance` of each other.
+    pub fn approx_gt(&self, other: &Decimal, tolerance: f64) -> bool {
+        !self.approx_eq(other, tolerance) && self > other
     }
 
-    /// Returns the sin of the Decimal.
-    pub fn sin(&self) -> Decimal {
-        if self.mag < 0.0 {
-            return *self;
-        }
-
-        if self.layer == 0 {
-            #[allow(deprecated)]
-            return Decimal::from_number((self.sign as f64 * self.mag).sin());
-        }
-
-        Decimal::from_components_unchecked(0, 0, 0.0)
-    }
-
-    /// Returns the cos of the Decimal.
-    pub fn cos(&self) -> Decimal {
-        if self.mag < 0.0 {
-            return Decimal::one();
-        }
-
-        if self.layer == 0 {
-            #[allow(deprecated)]
-            return Decimal::from_number((self.sign as f64 * self.mag).cos());
-        }
-
-        Decimal::from_components_unchecked(0, 0, 0.0)
-    }
-
-    /// Returns the tan of the Decimal.
-    pub fn tan(&self) -> Decimal {
-        if self.mag < 0.0 {
-            #[allow(deprecated)]
-            return Decimal::from_number((self.sign as f64 * self.mag).tan());
-        }
-
-        if self.layer == 0 {
-            #[allow(deprecated)]
-            return Decimal::from_number((self.sign as f64 * self.mag).tan());
-        }
-
-        Decimal::from_components_unchecked(0, 0, 0.0)
-    }
-
-    /// Returns the asin of the Decimal.
-    pub fn asin(&self) -> Decimal {
-        if self.mag < 0.0 {
-            return *self;
-        }
-
-        if self.layer == 0 {
-            #[allow(deprecated)]
-            return Decimal::from_number((self.sign as f64 * self.mag).asin());
-        }
-
-        Decimal::nan_sentinel()
-    }
-
-    /// Returns the acos of the Decimal.
-    pub fn acos(&self) -> Decimal {
-        if self.mag < 0.0 {
-            #[allow(deprecated)]
-            return Decimal::from_number(self.to_number().acos());
-        }
-
-        if self.layer == 0 {
-            #[allow(deprecated)]
-            return Decimal::from_number((self.sign as f64 * self.mag).acos());
-        }
-
-        Decimal::nan_sentinel()
-    }
-
-    /// Returns the atan of the Decimal.
-    pub fn atan(&self) -> Decimal {
-        if self.mag < 0.0 {
-            return *self;
-        }
-
-        if self.layer == 0 {
-            #[allow(deprecated)]
-            return Decimal::from_number((self.sign as f64 * self.mag).atan());
-        }
-
-        #[allow(deprecated)]
-        Decimal::from_number(f64::INFINITY.atan())
-    }
-
-    /// Returns the sinh of the Decimal.
-    pub fn sinh(&self) -> Decimal {
-        (self.exp() - (-*self).exp()) / Decimal::from_finite(2.0)
-    }
-
-    /// Returns the cosh of the Decimal.
-    pub fn cosh(&self) -> Decimal {
-        (self.exp() + (-*self).exp()) / Decimal::from_finite(2.0)
-    }
-
-    /// Returns the tanh of the Decimal.
-    pub fn tanh(&self) -> Decimal {
-        self.sinh() / self.cosh()
-    }
-
-    /// Returns the asinh of the Decimal.
-    pub fn asinh(&self) -> Decimal {
-        (*self + (self.sqr() + Decimal::from_finite(1.0)).sqrt()).ln()
-    }
-
-    /// Returns the acosh of the Decimal.
-    pub fn acosh(&self) -> Decimal {
-        (*self + (self.sqr() - Decimal::from_finite(1.0)).sqrt()).ln()
-    }
-
-    /// Returns the atanh of the Decimal.
-    pub fn atanh(&self) -> Decimal {
-        if self.abs() >= Decimal::from_finite(1.0) {
-            return Decimal::nan_sentinel();
-        }
-
-        // atanh(x) = ln((1+x)/(1-x)) / 2
-        ((*self + Decimal::from_finite(1.0)) / (Decimal::from_finite(1.0) - *self)).ln()
-            / Decimal::from_finite(2.0)
+    /// Returns true if `self > other` or the two are within `tolerance` of each other.
+    pub fn approx_ge(&self, other: &Decimal, tolerance: f64) -> bool {
+        self.approx_eq(other, tolerance) || self > other
     }
 }
 
@@ -816,27 +716,36 @@ impl PartialEq for Decimal {
 
 impl Eq for Decimal {}
 
-impl std::hash::Hash for Decimal {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl core::hash::Hash for Decimal {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.sign.hash(state);
         self.layer.hash(state);
         self.mag.to_bits().hash(state);
     }
 }
 
+// Ord::cmp and partial_cmp agree on every value a public API can return; they differ only on
+// the crate-internal NaN sentinel, where partial_cmp is None so that the ported JS search
+// loops see the same (all-false) comparisons as upstream.
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl PartialOrd for Decimal {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    /// Total order on every public value. The crate-internal NaN sentinel (never returned by a
+    /// public API) compares as unordered here, so the `<`/`>` operators are false against it,
+    /// mirroring JavaScript and keeping the ported search loops on the same control-flow path.
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.has_nan_mag() || other.has_nan_mag() {
+            return None;
+        }
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Decimal {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.sign.cmp(&other.sign).then_with(|| match self.sign {
             1 => self.cmpabs(other),
             -1 => other.cmpabs(self),
-            0 => std::cmp::Ordering::Equal,
-            _ => unreachable!("sign invariant violated"),
+            _ => Ordering::Equal,
         })
     }
 }
@@ -846,21 +755,20 @@ impl Ord for Decimal {
 // ---------------------------------------------------------------------------
 
 impl TryFrom<f64> for Decimal {
-    type Error = crate::error::ArithmeticError;
+    type Error = ArithmeticError;
 
+    /// Converts a finite `f64`. NaN and `±inf` are rejected; use [`Decimal::inf`] /
+    /// [`Decimal::neg_inf`] for explicit infinities.
     fn try_from(value: f64) -> Result<Self, Self::Error> {
-        if value.is_nan() || value.is_infinite() {
-            return Err(crate::error::ArithmeticError {
-                kind: crate::error::ArithmeticErrorKind::Undefined,
-                op: "from_f64",
-            });
+        if !value.is_finite() {
+            return Err(ArithmeticError::undefined("from_f64"));
         }
-        Ok(Decimal::default().set_from_number(value))
+        Ok(Decimal::from_f64(value))
     }
 }
 
 impl TryFrom<f32> for Decimal {
-    type Error = crate::error::ArithmeticError;
+    type Error = ArithmeticError;
 
     fn try_from(value: f32) -> Result<Self, Self::Error> {
         Decimal::try_from(value as f64)
@@ -870,6 +778,7 @@ impl TryFrom<f32> for Decimal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
 
     #[test]
     fn normalize_canonicalizes_neg_zero() {
@@ -879,8 +788,45 @@ mod tests {
             mag: -0.0_f64,
         };
         d.normalize();
-        // After normalization the mag should be positive zero (no NaN in bits, sign==0).
         assert_eq!(d, Decimal::zero());
+    }
+
+    #[test]
+    fn normalize_canonicalizes_infinities() {
+        assert_eq!(Decimal::from_f64(f64::INFINITY), Decimal::inf());
+        assert_eq!(Decimal::from_f64(f64::NEG_INFINITY), Decimal::neg_inf());
+        assert_eq!(
+            Decimal::from_components(1, 0, f64::INFINITY),
+            Decimal::inf()
+        );
+        assert_eq!(
+            Decimal::from_components(-1, 5, f64::INFINITY),
+            Decimal::neg_inf()
+        );
+        assert_eq!(
+            Decimal::from_components(1, MAX_SAFE_LAYER + 1, 100.0),
+            Decimal::inf()
+        );
+        // 10^(-inf) at any positive layer is zero.
+        assert_eq!(
+            Decimal::from_components(1, 1, f64::NEG_INFINITY),
+            Decimal::zero()
+        );
+        assert_eq!(-Decimal::inf(), Decimal::neg_inf());
+        assert_eq!(Decimal::neg_inf().abs(), Decimal::inf());
+    }
+
+    #[test]
+    fn infinity_orders_above_everything() {
+        let huge: Decimal = "(e^1000)10".parse().unwrap();
+        assert!(Decimal::inf() > huge);
+        assert!(Decimal::neg_inf() < -huge);
+        assert!(Decimal::inf() > Decimal::layer_safe_max());
+        assert_eq!(huge.max(Decimal::inf()), Decimal::inf());
+        assert_eq!(Decimal::inf().clamp_max(Decimal::ten()), Decimal::ten());
+        assert_eq!(Decimal::inf().cmp(&Decimal::inf()), Ordering::Equal);
+        assert_eq!(Decimal::inf().to_number(), f64::INFINITY);
+        assert_eq!(Decimal::neg_inf().to_number(), f64::NEG_INFINITY);
     }
 
     #[test]
@@ -904,6 +850,18 @@ mod tests {
     fn from_finite_roundtrip() {
         let d = Decimal::from_finite(42.0);
         assert_eq!(d.to_number(), 42.0);
+    }
+
+    #[test]
+    fn from_components_normalizes_sign() {
+        assert_eq!(Decimal::from_components(5, 0, 5.0).sign(), 1);
+        assert_eq!(Decimal::from_components(-7, 0, 5.0).sign(), -1);
+    }
+
+    #[test]
+    #[should_panic(expected = "layer must be non-negative")]
+    fn from_components_rejects_negative_layer() {
+        let _ = Decimal::from_components(1, -1, 5.0);
     }
 
     #[test]
@@ -939,7 +897,73 @@ mod tests {
         let a = Decimal::from_finite(1.0);
         let b = Decimal::from_finite(1.0 + 1e-11);
         assert!(a.approx_eq(&b, 1e-10));
-        // Exact equality should be false since they differ by bits.
         assert_ne!(a, b);
+        assert!(Decimal::inf().approx_eq(&Decimal::inf(), 1e-10));
+        assert!(!Decimal::inf().approx_eq(&Decimal::maximum(), 1e-10));
+    }
+
+    #[test]
+    fn tolerance_comparisons() {
+        let a = Decimal::from_finite(100.0);
+        let b = Decimal::from_finite(100.0 + 1e-9);
+        let c = Decimal::from_finite(101.0);
+        assert_eq!(a.cmp_tolerance(&b, 1e-8), Ordering::Equal);
+        assert_eq!(a.cmp_tolerance(&c, 1e-8), Ordering::Less);
+        assert!(a.approx_le(&b, 1e-8));
+        assert!(a.approx_ge(&b, 1e-8));
+        assert!(!a.approx_lt(&b, 1e-8));
+        assert!(a.approx_lt(&c, 1e-8));
+        assert!(c.approx_gt(&a, 1e-8));
+        assert!(a.approx_ne(&c, 1e-8));
+    }
+
+    #[test]
+    fn rounding_of_tiny_and_negative_values() {
+        assert_eq!(Decimal::from_finite(1e-20).ceil(), Decimal::one());
+        assert_eq!(Decimal::from_finite(1e-20).floor(), Decimal::zero());
+        assert_eq!(Decimal::from_finite(-1e-20).floor(), Decimal::neg_one());
+        assert_eq!(Decimal::from_finite(-1e-20).ceil(), Decimal::zero());
+        assert_eq!(Decimal::from_finite(-1e-20).round(), Decimal::zero());
+        assert_eq!(
+            Decimal::from_finite(-2.5).floor(),
+            Decimal::from_finite(-3.0)
+        );
+        assert_eq!(
+            Decimal::from_finite(-2.5).ceil(),
+            Decimal::from_finite(-2.0)
+        );
+        assert_eq!(
+            Decimal::from_finite(-2.5).trunc(),
+            Decimal::from_finite(-2.0)
+        );
+        assert_eq!(
+            Decimal::from_finite(-2.5).round(),
+            Decimal::from_finite(-3.0)
+        );
+        assert_eq!(Decimal::inf().floor(), Decimal::inf());
+    }
+
+    #[test]
+    fn exponent_at_layer_two() {
+        let d: Decimal = "ee2.5".parse().unwrap();
+        // 10^(10^2.5) = 10^316.2, so the exponent is floor(10^2.5) = 316.
+        assert_eq!(d.exponent(), 316.0);
+    }
+
+    #[test]
+    fn set_mantissa_keeps_exponent() {
+        let mut d: Decimal = "1.5e100".parse().unwrap();
+        d.set_mantissa(2.5);
+        assert!(d.approx_eq(&"2.5e100".parse().unwrap(), 1e-12));
+    }
+
+    #[test]
+    fn minimum_is_positive_and_tiny() {
+        assert!(Decimal::minimum() > Decimal::zero());
+        assert!(Decimal::minimum() < Decimal::from_finite(1e-300));
+        assert_eq!(
+            Decimal::minimum().to_string().parse::<Decimal>().unwrap(),
+            Decimal::minimum()
+        );
     }
 }

@@ -1,3 +1,4 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 #![warn(missing_docs)]
 #![warn(clippy::pedantic)]
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -15,35 +16,57 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::unreadable_literal)]
 #![allow(clippy::return_self_not_must_use)]
+#![allow(clippy::doc_markdown)]
 #![crate_name = "break_eternity"]
 #![doc = include_str!("../README.md")]
 
+#[cfg(not(any(feature = "std", feature = "libm")))]
+compile_error!("break-eternity-rs needs either the `std` feature (default) or the `libm` feature");
+
+extern crate alloc;
+#[cfg(test)]
+extern crate std;
+
 mod arithmetic;
 mod constants;
+mod convert;
 mod critical_section;
 mod decimal;
 mod error;
 mod format;
-#[cfg(feature = "godot3")]
-mod gdnative_impl;
 #[cfg(feature = "godot4")]
 mod godot_impl;
+mod math;
+pub mod notation;
 mod parse;
+mod rounding;
 #[cfg(feature = "serde")]
 mod serde_impl;
+mod series;
+#[cfg(feature = "proptest")]
+pub mod strategy;
 mod tetration;
 mod transcendental;
+mod trig;
 mod utils;
 #[cfg(feature = "wasm")]
 mod wasm;
 
 pub use constants::{
     COMPARE_EPSILON, EXPN1, EXPONENT_LIMIT, FIRST_NEG_LAYER, LAYER_REDUCTION_THRESHOLD,
-    MAX_ES_IN_A_ROW, MAX_FLOAT_PRECISION, MAX_POWERS_OF_TEN, NUMBER_EXP_MAX, NUMBER_EXP_MIN, OMEGA,
-    TWO_PI,
+    MAX_ES_IN_A_ROW, MAX_FLOAT_PRECISION, MAX_POWERS_OF_TEN, MAX_SAFE_LAYER, NUMBER_EXP_MAX,
+    NUMBER_EXP_MIN, OMEGA, TETRATION_CONVERGENCE_MAX, TETRATION_CONVERGENCE_MIN, TWO_PI,
 };
 pub use decimal::Decimal;
 pub use error::{ArithmeticError, ArithmeticErrorKind, BreakEternityError};
 pub use format::{decimal_places, to_fixed};
-pub use tetration::TetrationMode;
+#[cfg(feature = "godot4")]
+pub use godot_impl::GodotDecimal;
+pub use notation::{Notation, NotationDisplay};
+#[cfg(feature = "serde")]
+pub use serde_impl::{components as serde_components, string as serde_string};
+pub use tetration::{InverseSearch, TetrationMode};
+pub use transcendental::LambertBranch;
 pub use utils::sign;
+#[cfg(feature = "wasm")]
+pub use wasm::JsDecimal;
