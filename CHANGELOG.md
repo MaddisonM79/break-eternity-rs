@@ -7,56 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- `Notation` (`Scientific`, `Engineering`, `Standard`, `Letters`, `Logarithm`) with
-  `Decimal::to_notation(notation, places)` and the allocation-free `Decimal::display(..)`
-  adapter, plus `notation::standard_abbreviation` / `letters_abbreviation` for custom layouts.
-  Illion names follow the Antimatter Dimensions scheme; exponents past `1e9` print as `e` +
-  logarithm.
-- Rounding that returns a `Decimal`: `round_to_places` / `floor_to_places` / `ceil_to_places` /
-  `trunc_to_places` (negative places allowed) and `round_to_significant` (works at layer 1 by
-  rounding the mantissa). Also `fract` and `is_integer`.
-- Integer interop: `TryFrom<Decimal>` and `TryFrom<&Decimal>` for every primitive integer
-  (exact; `ArithmeticErrorKind::NotInteger` / `Overflow`), and `to_i32/u32/i64/u64/i128/u128/usize_saturating`.
-- `ArithmeticErrorKind` is now `#[non_exhaustive]` with two new variants, `Overflow` and
-  `NotInteger`.
-- `proptest` feature: `Arbitrary for Decimal` with `DecimalParams` (zero / negative /
-  fractional / infinite / max layer) and the presets `finite_decimal`, `any_decimal`,
-  `positive_decimal`, `integer_decimal`, `layer0_decimal` in `break_eternity::strategy`.
-- `serde`: binary formats now get the `(sign, layer, mag)` components instead of a string
-  (17 bytes fixed-width, no parsing on load); human-readable formats keep the string.
-  Deserializing from JSON also accepts plain numbers and `[sign, layer, mag]` arrays, and
-  parse errors name the offending input. `serde_components` and `serde_string` are
-  `#[serde(with)]` adapters that pin one representation. Infinity in component form is
-  `(±1, i64::MAX, 0.0)` so JSON can carry it.
-- `JsDecimal` gained `toNotation`, `roundToPlaces`, `roundToSignificant`, and `isInteger`.
-- `bevy_reflect` feature: `Decimal` derives an opaque `Reflect` (with `Clone`, `Debug`,
-  `PartialEq`, `Hash`, `Default` type data, and `Serialize` / `Deserialize` when `serde` is
-  on), so it can be a field of a reflected Bevy component.
-- `godot4`: `GodotDecimal`, a `RefCounted` class exposing construction, formatting
-  (including `to_notation`), arithmetic, powers and logarithms, tetration, comparison and the
-  series helpers to GDScript. Fallible methods return `null`. `Gd<GodotDecimal>` implements
-  `From<Decimal>`.
-- `no_std` support.
-
-### Changed
-
-- MSRV is `1.87` for the crate and its non-engine features. `bevy_reflect` needs `1.92` and
-  `godot4` keeps needing `1.94` (their dependencies' floors). It was declared as `1.94`
-  across the board.
-- `slog` refines its estimate with a bracketed secant search instead of upstream's 100-step
-  doubling/halving walk. Results agree with `break_eternity.js` to parity tolerance (the
-  fixture gate is unchanged) and are exact where the answer is an integer height (`slog(1)`
-  is `0`, not `6.6e-17`); `slog(ee1000)` is about 7x faster, and everything built on it
-  (`layer_add`, fractional `iteratedlog`, `penta_log`, `"10^^2.5"` literals) speeds up with
-  it. Two ill-conditioned classes now land on different noise than upstream: `layer_add` of a
-  negative or sub-`1/9e15` value, and `layer_add` / negative-height `tetrate` on a base below
-  1, where upstream's search runs away to the base's fixed point. The new `std` feature is on by default; disable it and enable `libm` to
-  build for targets without a standard library (`alloc` is still required). The powers-of-ten
-  table is now a static array instead of a lazily initialised `Vec`, which also removes an
-  atomic load from `to_number()` on the layer-0 fast path.
-
 ## [0.5.0] - 2026-09-20
 
 A correctness release. Everything below was found by an audit of the 0.4.0 surface against
@@ -169,6 +119,53 @@ divergences).
 - Criterion benchmarks (`cargo bench`) and two runnable examples (`idle_loop`, `formatting`).
 - CI: `wasm32` test job, `cargo semver-checks`, `cargo deny`, pinned action bumps; issue
   and PR templates; `CODEOWNERS`.
+- `Notation` (`Scientific`, `Engineering`, `Standard`, `Letters`, `Logarithm`) with
+  `Decimal::to_notation(notation, places)` and the allocation-free `Decimal::display(..)`
+  adapter, plus `notation::standard_abbreviation` / `letters_abbreviation` for custom layouts.
+  Illion names follow the Antimatter Dimensions scheme; exponents past `1e9` print as `e` +
+  logarithm.
+- Rounding that returns a `Decimal`: `round_to_places` / `floor_to_places` / `ceil_to_places` /
+  `trunc_to_places` (negative places allowed) and `round_to_significant` (works at layer 1 by
+  rounding the mantissa). Also `fract` and `is_integer`.
+- Integer interop: `TryFrom<Decimal>` and `TryFrom<&Decimal>` for every primitive integer
+  (exact; `ArithmeticErrorKind::NotInteger` / `Overflow`), and `to_i32/u32/i64/u64/i128/u128/usize_saturating`.
+- `ArithmeticErrorKind` is now `#[non_exhaustive]` with two new variants, `Overflow` and
+  `NotInteger`.
+- `proptest` feature: `Arbitrary for Decimal` with `DecimalParams` (zero / negative /
+  fractional / infinite / max layer) and the presets `finite_decimal`, `any_decimal`,
+  `positive_decimal`, `integer_decimal`, `layer0_decimal` in `break_eternity::strategy`.
+- `serde`: binary formats now get the `(sign, layer, mag)` components instead of a string
+  (17 bytes fixed-width, no parsing on load); human-readable formats keep the string.
+  Deserializing from JSON also accepts plain numbers and `[sign, layer, mag]` arrays, and
+  parse errors name the offending input. `serde_components` and `serde_string` are
+  `#[serde(with)]` adapters that pin one representation. Infinity in component form is
+  `(±1, i64::MAX, 0.0)` so JSON can carry it.
+- `JsDecimal` gained `toNotation`, `roundToPlaces`, `roundToSignificant`, and `isInteger`.
+- `bevy_reflect` feature: `Decimal` derives an opaque `Reflect` (with `Clone`, `Debug`,
+  `PartialEq`, `Hash`, `Default` type data, and `Serialize` / `Deserialize` when `serde` is
+  on), so it can be a field of a reflected Bevy component.
+- `godot4`: `GodotDecimal`, a `RefCounted` class exposing construction, formatting
+  (including `to_notation`), arithmetic, powers and logarithms, tetration, comparison and the
+  series helpers to GDScript. Fallible methods return `null`. `Gd<GodotDecimal>` implements
+  `From<Decimal>`.
+- `no_std` support.
+
+### Changed
+
+- MSRV is `1.87` for the crate and its non-engine features. `bevy_reflect` needs `1.92` and
+  `godot4` keeps needing `1.94` (their dependencies' floors). It was declared as `1.94`
+  across the board.
+- `slog` refines its estimate with a bracketed secant search instead of upstream's 100-step
+  doubling/halving walk. Results agree with `break_eternity.js` to parity tolerance (the
+  fixture gate is unchanged) and are exact where the answer is an integer height (`slog(1)`
+  is `0`, not `6.6e-17`); `slog(ee1000)` is about 7x faster, and everything built on it
+  (`layer_add`, fractional `iteratedlog`, `penta_log`, `"10^^2.5"` literals) speeds up with
+  it. Two ill-conditioned classes now land on different noise than upstream: `layer_add` of a
+  negative or sub-`1/9e15` value, and `layer_add` / negative-height `tetrate` on a base below
+  1, where upstream's search runs away to the base's fixed point. The new `std` feature is on by default; disable it and enable `libm` to
+  build for targets without a standard library (`alloc` is still required). The powers-of-ten
+  table is now a static array instead of a lazily initialised `Vec`, which also removes an
+  atomic load from `to_number()` on the layer-0 fast path.
 
 ### Fixed
 
