@@ -180,9 +180,11 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       # Compares the public API against the latest crates.io release. Pre-1.0,
       # a breaking change is allowed when the minor version is bumped.
+      # Default features stay on: the crate needs `std` (or `libm`) to build,
+      # and the 0.4 baseline has no `std` feature to ask for explicitly.
       - uses: obi1kenobi/cargo-semver-checks-action@6b69fcf40e9b5fb17adeb57e4b6ecd020649a239 # v2.9
         with:
-          feature-group: only-explicit-features
+          feature-group: default-features
           features: serde
 
   deny:

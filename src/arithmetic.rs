@@ -755,8 +755,8 @@ mod tests {
 
     #[test]
     fn primitive_comparisons() {
-        assert!(Decimal::from(2) == 2.0);
-        assert!(2.0 == Decimal::from(2));
+        assert_eq!(Decimal::from(2), 2.0);
+        assert_eq!(2.0, Decimal::from(2));
         assert!(Decimal::from(2) < 3_u8);
         assert!(3_i64 > Decimal::from(2));
         assert!(Decimal::from(2).partial_cmp(&f64::NAN).is_none());

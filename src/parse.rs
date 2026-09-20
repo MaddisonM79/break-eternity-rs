@@ -341,8 +341,8 @@ fn parse(s: &str, mode: TetrationMode) -> Result<Decimal, BreakEternityError> {
     // -----------------------------------------------------------------------
     let mantissa_str = e_parts[0].trim();
     let mantissa = match mantissa_str {
-        "" | "+" => None,
-        "-" => Some(-1.0_f64).filter(|_| false).or(None),
+        // A bare sign means an implicit mantissa of 1; the sign is applied below.
+        "" | "+" | "-" => None,
         other => Some(parse_f64(other, s)?),
     };
     let explicit_sign: i8 = if mantissa_str == "-" { -1 } else { 1 };

@@ -1426,17 +1426,19 @@ fn refine_slog(
 
         let candidate = if fb.is_nan() {
             // No direction from this probe: pull back toward the last finite one.
-            0.5 * (a + b)
+            f64::midpoint(a, b)
         } else if fa.is_finite() && fb.is_finite() && fb != fa {
             let secant = b - fb * (b - a) / (fb - fa);
             match bracket {
-                Some((l, h)) if !(secant > l && secant < h && secant.is_finite()) => 0.5 * (l + h),
+                Some((l, h)) if !(secant > l && secant < h && secant.is_finite()) => {
+                    f64::midpoint(l, h)
+                }
                 None if !secant.is_finite() => b + 2.0 * (b - a),
                 _ => secant,
             }
         } else {
             match bracket {
-                Some((l, h)) => 0.5 * (l + h),
+                Some((l, h)) => f64::midpoint(l, h),
                 // Flat, single point, or infinite residual: march the way it points.
                 None => b + (b - a).abs().max(0.001) * 2.0 * -fb.signum(),
             }
