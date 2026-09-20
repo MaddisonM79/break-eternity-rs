@@ -3,6 +3,11 @@
 
 use core::cmp::Ordering;
 
+#[cfg(feature = "bevy_reflect")]
+use bevy_reflect::prelude::ReflectDefault;
+#[cfg(all(feature = "bevy_reflect", feature = "serde"))]
+use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
+
 use crate::constants::{
     power_of_10, EXPONENT_LIMIT, FIRST_NEG_LAYER, INFINITE_LAYER, LAYER_REDUCTION_THRESHOLD,
     MAX_SAFE_LAYER,
@@ -28,6 +33,15 @@ use crate::utils::{f_maglog10, sign};
 /// `inf / inf` are reported as [`ArithmeticErrorKind::Undefined`](crate::ArithmeticErrorKind::Undefined)
 /// by the `checked_*` methods (the operator forms panic).
 #[derive(Clone, Copy, Debug, Default)]
+#[cfg_attr(
+    feature = "bevy_reflect",
+    derive(bevy_reflect::Reflect),
+    reflect(opaque, Clone, Debug, PartialEq, Hash, Default)
+)]
+#[cfg_attr(
+    all(feature = "bevy_reflect", feature = "serde"),
+    reflect(Serialize, Deserialize)
+)]
 pub struct Decimal {
     /// Sign of the Decimal. 1 for positive, -1 for negative, 0 for zero.
     pub(crate) sign: i8,

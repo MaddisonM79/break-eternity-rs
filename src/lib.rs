@@ -60,6 +60,8 @@ pub use constants::{
 pub use decimal::Decimal;
 pub use error::{ArithmeticError, ArithmeticErrorKind, BreakEternityError};
 pub use format::{decimal_places, to_fixed};
+#[cfg(feature = "godot4")]
+pub use godot_impl::GodotDecimal;
 pub use notation::{Notation, NotationDisplay};
 #[cfg(feature = "serde")]
 pub use serde_impl::{components as serde_components, string as serde_string};

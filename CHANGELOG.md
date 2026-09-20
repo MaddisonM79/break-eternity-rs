@@ -31,7 +31,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `#[serde(with)]` adapters that pin one representation. Infinity in component form is
   `(±1, i64::MAX, 0.0)` so JSON can carry it.
 - `JsDecimal` gained `toNotation`, `roundToPlaces`, `roundToSignificant`, and `isInteger`.
-- `no_std` support. The new `std` feature is on by default; disable it and enable `libm` to
+- `bevy_reflect` feature: `Decimal` derives an opaque `Reflect` (with `Clone`, `Debug`,
+  `PartialEq`, `Hash`, `Default` type data, and `Serialize` / `Deserialize` when `serde` is
+  on), so it can be a field of a reflected Bevy component.
+- `godot4`: `GodotDecimal`, a `RefCounted` class exposing construction, formatting
+  (including `to_notation`), arithmetic, powers and logarithms, tetration, comparison and the
+  series helpers to GDScript. Fallible methods return `null`. `Gd<GodotDecimal>` implements
+  `From<Decimal>`.
+- `no_std` support.
+
+### Changed
+
+- MSRV is `1.87` for the crate and its non-engine features. `bevy_reflect` needs `1.92` and
+  `godot4` keeps needing `1.94` (their dependencies' floors). It was declared as `1.94`
+  across the board.
+- `slog` refines its estimate with a bracketed secant search instead of upstream's 100-step
+  doubling/halving walk. Results agree with `break_eternity.js` to parity tolerance (the
+  fixture gate is unchanged) and are exact where the answer is an integer height (`slog(1)`
+  is `0`, not `6.6e-17`); `slog(ee1000)` is about 7x faster, and everything built on it
+  (`layer_add`, fractional `iteratedlog`, `penta_log`, `"10^^2.5"` literals) speeds up with
+  it. Two ill-conditioned classes now land on different noise than upstream: `layer_add` of a
+  negative or sub-`1/9e15` value, and `layer_add` / negative-height `tetrate` on a base below
+  1, where upstream's search runs away to the base's fixed point. The new `std` feature is on by default; disable it and enable `libm` to
   build for targets without a standard library (`alloc` is still required). The powers-of-ten
   table is now a static array instead of a lazily initialised `Vec`, which also removes an
   atomic load from `to_number()` on the layer-0 fast path.

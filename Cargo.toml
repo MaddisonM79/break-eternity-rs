@@ -2,7 +2,7 @@
 name = "break-eternity-rs"
 version = "0.5.0"
 edition = "2021"
-rust-version = "1.94"
+rust-version = "1.87"
 license = "MIT"
 description = "Fork of break-eternity: a numerical library to represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308)."
 authors = ["MaddisonM79", "cozyGalvinism <jean@der-capta.in>"]
@@ -29,6 +29,7 @@ proptest = { version = "1", optional = true, default-features = false, features 
 godot = { version = "0.5", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 js-sys = { version = "0.3", optional = true }
+bevy_reflect = { version = "0.19", default-features = false, optional = true }
 
 [dev-dependencies]
 bincode = "1"
@@ -58,7 +59,9 @@ libm = ["dep:libm"]
 serde = ["dep:serde"]
 # `proptest::Arbitrary` for `Decimal` and the strategies in `break_eternity::strategy`.
 proptest = ["std", "dep:proptest"]
-# Godot 4 via gdext.
+# Godot 4 via gdext: `GodotConvert` for `Decimal` and the `GodotDecimal` class. Needs Rust 1.94.
 godot4 = ["std", "dep:godot"]
 # Exposes Decimal to JavaScript via wasm-bindgen.
 wasm = ["std", "dep:wasm-bindgen", "dep:js-sys"]
+# `bevy_reflect::Reflect` (opaque) for `Decimal`, so it can live in reflected components. Needs Rust 1.92.
+bevy_reflect = ["std", "dep:bevy_reflect", "bevy_reflect/std"]

@@ -33,7 +33,7 @@ cargo build --no-default-features --features libm
 cargo test --no-default-features --features libm --lib
 ```
 
-The `godot4` feature needs `libclang` for the gdext build script; CI builds it on Linux, so you only need it locally if you touch `src/godot_impl.rs`:
+The `godot4` feature needs `libclang` for the gdext build script and Rust 1.94 (the rest of the crate is checked on 1.87); CI builds it on Linux, so you only need it locally if you touch `src/godot_impl.rs`:
 
 ```sh
 cargo clippy --all-features --all-targets -- -D warnings

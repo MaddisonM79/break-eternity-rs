@@ -52,7 +52,7 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo doc --no-deps --features serde,wasm,proptest
+      - run: cargo doc --no-deps --features serde,wasm,proptest,bevy_reflect
 
   test:
     name: test (${{ matrix.rust }} / ${{ matrix.os }})
@@ -73,12 +73,37 @@ jobs:
       # The core test matrix runs against the default + serde features only.
       - run: cargo test --features serde
       - run: cargo test --features proptest --test proptest_arbitrary
+      - run: cargo test --features bevy_reflect,serde --test bevy_reflect
       - run: cargo test --no-default-features --features libm --lib
       - run: cargo build --examples
       - run: cargo run --example idle_loop
 
   msrv:
-    name: MSRV (1.94)
+    name: MSRV (${{ matrix.rust }}, ${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The crate itself, with every feature that does not pull in an engine.
+          - rust: "1.87"
+            features: serde,libm,proptest,wasm
+          # bevy_reflect 0.19's proc-macro crate needs RwLockWriteGuard::downgrade.
+          - rust: "1.92"
+            features: serde,libm,proptest,wasm,bevy_reflect
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: ${{ matrix.rust }}
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo check --features ${{ matrix.features }} --all-targets
+      - run: cargo check --no-default-features --features libm,serde
+      - run: cargo check --target wasm32-unknown-unknown --features wasm
+
+  msrv-godot:
+    name: MSRV godot4 (1.94)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -86,8 +111,7 @@ jobs:
         with:
           toolchain: "1.94"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      # MSRV is dictated by the optional godot 0.5 (gdext) dep, which
-      # cargo resolves even when the godot4 feature is off.
+      # godot 0.5 (gdext) requires 1.94; the rest of the crate is checked on 1.87 above.
       - name: Install libclang (required by gdext build script)
         run: sudo apt-get install -y libclang-dev
       - run: cargo build --all-features

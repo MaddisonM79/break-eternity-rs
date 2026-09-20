@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/break-eternity-rs.svg)](https://crates.io/crates/break-eternity-rs)
 [![docs.rs](https://img.shields.io/docsrs/break-eternity-rs)](https://docs.rs/break-eternity-rs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![MSRV](https://img.shields.io/badge/MSRV-1.94-blue.svg)](https://www.rust-lang.org)
+[![MSRV](https://img.shields.io/badge/MSRV-1.87-blue.svg)](https://www.rust-lang.org)
 
 A Rust numerical library for representing numbers from `10^^9e15` down to `10^-(10^^9e15)`. Built for incremental and idle games, where speed matters more than perfect precision and `f64` runs out somewhere around floor 7 of the upgrade tree.
 
@@ -53,7 +53,8 @@ break-eternity-rs = { version = "0.5", features = ["serde"] }
 | `std` (default) | Standard-library float math | Turn it off for `no_std`; see below. |
 | `libm` | Pure-Rust float math from [`libm`](https://crates.io/crates/libm) | Required when `std` is off. Ignored when `std` is on. |
 | `serde` | `Serialize` / `Deserialize` | String in human-readable formats, `(sign, layer, mag)` in binary ones; `serde_components` / `serde_string` adapters. Works without `std`. |
-| `godot4` | `GodotConvert` / `FromGodot` / `ToGodot` for [`godot`](https://crates.io/crates/godot) | Godot 4 / gdext. Round-trip via `GString`. |
+| `bevy_reflect` | `bevy_reflect::Reflect` (opaque) for `Decimal` | Put a `Decimal` in a reflected Bevy component; with `serde` also `ReflectSerialize` / `ReflectDeserialize`. Needs Rust 1.92. |
+| `godot4` | `GodotConvert` / `FromGodot` / `ToGodot` for `Decimal`, plus the `GodotDecimal` class, via [`godot`](https://crates.io/crates/godot) | Godot 4 / gdext. `Decimal` crosses as a `GString`; `GodotDecimal` gives GDScript the arithmetic. Needs Rust 1.94. |
 | `proptest` | `proptest::Arbitrary` for `Decimal`, presets in `break_eternity::strategy` | For property tests in your own crate; implies `std`. |
 | `wasm` | `JsDecimal` class via [`wasm-bindgen`](https://crates.io/crates/wasm-bindgen) | Exposes `Decimal` to JavaScript with a `break_eternity.js`-like method surface. |
 
@@ -382,9 +383,34 @@ let back: Save = serde_json::from_str(&json).unwrap();
 assert_eq!(save.money, back.money);
 ```
 
+### Bevy
+
+Enable `features = ["bevy_reflect"]` and `Decimal` is an opaque reflected type: it can sit in a `#[derive(Reflect, Component)]` struct, shows up in the inspector as a value, and (with `serde`) round-trips through scene serialization.
+
+```rust,ignore
+use bevy::prelude::*;
+use break_eternity::Decimal;
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component)]
+struct Wallet {
+    money: Decimal,
+}
+```
+
 ### Godot 4
 
-Enable `features = ["godot4"]`. `Decimal` crosses the `GDScript` boundary as a `GString`, so you can store and pass it around freely.
+Enable `features = ["godot4"]`. `Decimal` crosses the `GDScript` boundary as a `GString`, so you can store and pass it around freely, and `GodotDecimal` is a `RefCounted` class that exposes the arithmetic, formatting, comparison and game-helper surface to GDScript directly:
+
+```gdscript
+var money := GodotDecimal.from_string("1e308")
+money = money.mul(GodotDecimal.from_number(2.5))
+label.text = money.to_notation("standard", 2)   # "2.50 Ce"
+if money.gte(GodotDecimal.from_string("1e310")):
+    unlock()
+```
+
+Fallible methods (`div` by zero, `ln` of a negative, ...) return `null` rather than raising. From Rust, `GodotDecimal::new(d)` wraps and `.bind().value()` unwraps.
 
 ```rust,ignore
 use break_eternity::Decimal;
@@ -488,7 +514,7 @@ The crate follows the upstream algorithms closely enough that `tests/fixtures/pa
 
 ## Minimum supported Rust version
 
-The crate is built and tested against `rustc 1.94` (Rust 2021 edition). The MSRV is dictated by the optional `godot` (gdext) dependency; the core crate alone compiles on considerably older toolchains but that is not tested.
+`rustc 1.87` (Rust 2021 edition) for the crate with any combination of `std`, `libm`, `serde`, `proptest` and `wasm`. Two features pull in engine crates with their own floors: `bevy_reflect` needs `1.92` (bevy 0.19's proc macros) and `godot4` needs `1.94` (gdext 0.5). CI checks all three.
 
 ## Contributing
 
