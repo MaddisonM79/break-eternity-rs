@@ -5,8 +5,8 @@
 //! * **Human-readable formats** (JSON, TOML, YAML, RON, ...) get the [`Display`] string, e.g.
 //!   `"1.5e100"`. It is readable in a save file and round-trips exactly.
 //! * **Binary formats** (bincode, postcard, MessagePack, ...) get the raw components as a
-//!   `(sign: i8, layer: i64, mag: f64)` tuple: 17 bytes in bincode instead of a length-prefixed
-//!   string, and no parsing on load.
+//!   `(sign: i8, layer: i64, mag: f64)` tuple: 17 bytes fixed-width (10 in postcard for small
+//!   values) instead of a length-prefixed string, and no parsing on load.
 //!
 //! Deserializing from a human-readable format also accepts plain numbers, so a hand-written
 //! `{"money": 100}` loads as well as `{"money": "100"}`, and a component array `[1, 1, 100.0]`.

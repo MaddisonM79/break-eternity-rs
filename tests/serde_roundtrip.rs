@@ -1,5 +1,5 @@
-//! Serde tests for [`Decimal`]: default string form in JSON, component tuple in bincode,
-//! the `serde_components` / `serde_string` adapters, and lenient JSON input.
+//! Serde tests for [`Decimal`]: default string form in JSON, component tuple in a binary
+//! format (postcard), the `serde_components` / `serde_string` adapters, and lenient JSON input.
 //!
 //! Run with: `cargo test --features serde`
 #![cfg(feature = "serde")]
@@ -42,13 +42,16 @@ fn json_uses_the_display_string_and_round_trips() {
 }
 
 #[test]
-fn bincode_uses_components_and_round_trips_exactly() {
+fn binary_format_uses_components_and_round_trips_exactly() {
     for v in samples() {
-        let bytes = bincode::serialize(&v).unwrap();
-        assert_eq!(bytes.len(), 1 + 8 + 8, "{v:?}");
-        let back: Decimal = bincode::deserialize(&bytes).unwrap();
+        let bytes = postcard::to_allocvec(&v).unwrap();
+        // sign (1) + varint layer (1..=10) + f64 (8); a string would be longer for anything
+        // but the smallest values, and needs parsing on load.
+        assert!(bytes.len() <= 1 + 10 + 8, "{v:?}: {} bytes", bytes.len());
+        let back: Decimal = postcard::from_bytes(&bytes).unwrap();
         assert_eq!(v, back);
     }
+    assert_eq!(postcard::to_allocvec(&Decimal::from(5)).unwrap().len(), 10);
 }
 
 #[test]
@@ -104,8 +107,8 @@ fn with_adapters_pin_the_representation() {
         assert!(value["text"].is_string(), "{json}");
         assert!(value["plain"].is_string(), "{json}");
 
-        let bytes = bincode::serialize(&save).unwrap();
-        let back: Save = bincode::deserialize(&bytes).unwrap();
+        let bytes = postcard::to_allocvec(&save).unwrap();
+        let back: Save = postcard::from_bytes(&bytes).unwrap();
         assert_eq!(back.compact, v);
         assert_eq!(back.plain, v);
         assert!(back.text.approx_eq(&v, 1e-12));

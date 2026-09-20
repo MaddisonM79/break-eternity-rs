@@ -361,7 +361,7 @@ The illion names follow the Antimatter Dimensions scheme (`K`, `M`, `B`, `T`, `Q
 
 ### Saving and loading with `serde`
 
-Enable `features = ["serde"]`. Human-readable formats (JSON, TOML, RON, ...) get the `Display` string, which keeps the save file readable and round-trips exactly; binary formats (bincode, postcard, ...) get the raw `(sign, layer, mag)` components, 17 bytes in bincode with no parsing on load. JSON input is lenient: `"1e100"`, `100`, and `[1, 1, 100.0]` all load. Pin a field to one form with `#[serde(with = "break_eternity::serde_components")]` or `"break_eternity::serde_string"`.
+Enable `features = ["serde"]`. Human-readable formats (JSON, TOML, RON, ...) get the `Display` string, which keeps the save file readable and round-trips exactly; binary formats (bincode, postcard, ...) get the raw `(sign, layer, mag)` components: 17 bytes fixed-width, no parsing on load. JSON input is lenient: `"1e100"`, `100`, and `[1, 1, 100.0]` all load. Pin a field to one form with `#[serde(with = "break_eternity::serde_components")]` or `"break_eternity::serde_string"`.
 
 ```rust,ignore
 use break_eternity::Decimal;

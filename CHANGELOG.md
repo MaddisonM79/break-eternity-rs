@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fractional / infinite / max layer) and the presets `finite_decimal`, `any_decimal`,
   `positive_decimal`, `integer_decimal`, `layer0_decimal` in `break_eternity::strategy`.
 - `serde`: binary formats now get the `(sign, layer, mag)` components instead of a string
-  (17 bytes in bincode, no parsing on load); human-readable formats keep the string.
+  (17 bytes fixed-width, no parsing on load); human-readable formats keep the string.
   Deserializing from JSON also accepts plain numbers and `[sign, layer, mag]` arrays, and
   parse errors name the offending input. `serde_components` and `serde_string` are
   `#[serde(with)]` adapters that pin one representation. Infinity in component form is
