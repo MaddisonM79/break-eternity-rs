@@ -11,8 +11,8 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use break_eternity::{
-    ArithmeticError, Decimal, LambertBranch, TetrationMode, EXPONENT_LIMIT, FIRST_NEG_LAYER,
-    LAYER_REDUCTION_THRESHOLD, MAX_SAFE_LAYER,
+    ArithmeticError, Decimal, LambertBranch, Notation, TetrationMode, EXPONENT_LIMIT,
+    FIRST_NEG_LAYER, LAYER_REDUCTION_THRESHOLD, MAX_SAFE_LAYER,
 };
 use proptest::prelude::*;
 
@@ -360,6 +360,34 @@ proptest! {
             if let Ok(v) = r {
                 assert_well_formed(op, &input, v)?;
             }
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 256, ..ProptestConfig::default() })]
+
+    /// Every notation is total: no panic, no NaN, a sign only on negative values, and a
+    /// leading `e` whenever the exponent was too large to print.
+    #[test]
+    fn notation_contract(d in any_decimal(), places in 0_usize..12) {
+        std::panic::set_hook(Box::new(|_| {}));
+        for notation in [
+            Notation::Scientific,
+            Notation::Engineering,
+            Notation::Standard,
+            Notation::Letters,
+            Notation::Logarithm,
+        ] {
+            let s = quietly(|| d.to_notation(notation, places))
+                .map_err(|()| TestCaseError::fail(format!("{notation:?}({d:?}) panicked")))?;
+            prop_assert!(!s.is_empty(), "{notation:?}({d:?}) is empty");
+            prop_assert!(!s.contains("NaN"), "{notation:?}({d:?}) = {s}");
+            prop_assert_eq!(s.starts_with('-'), d.sign() == -1, "{:?}({:?}) = {}", notation, d, s);
+            prop_assert!(
+                !s.contains("inf") || d.is_infinite(),
+                "{notation:?}({d:?}) = {s}"
+            );
         }
     }
 }

@@ -323,6 +323,26 @@ assert_eq!(Decimal::from(-5).to_fixed(2), "-5.00");
 assert_eq!(Decimal::from_finite(0.00123).to_precision(2), "0.0012");
 ```
 
+For the notations players actually read, use `to_notation` (or `display`, which writes into a formatter without allocating). All of them print values under 1000 as plain fixed-point numbers, carry rounding across thresholds (`999_999.5` is `1.00 M`, not `1000.00 K`), and switch to `e` + logarithm once an exponent passes `1e9`.
+
+```rust
+use break_eternity::{Decimal, Notation};
+
+let gold = Decimal::from_finite(1_234_567_890.0);
+assert_eq!(gold.to_notation(Notation::Scientific, 2), "1.23e9");
+assert_eq!(gold.to_notation(Notation::Engineering, 2), "1.23e9");
+assert_eq!(gold.to_notation(Notation::Standard, 2), "1.23 B");
+assert_eq!(gold.to_notation(Notation::Letters, 2), "1.23 c");
+assert_eq!(gold.to_notation(Notation::Logarithm, 2), "e9.09");
+
+let tower: Decimal = "10^^3".parse().unwrap(); // 10^10^10
+assert_eq!(tower.to_notation(Notation::Scientific, 2), "e1.00e10");
+assert_eq!(tower.to_notation(Notation::Logarithm, 2), "ee10.00");
+assert_eq!(format!("{}", Decimal::from(42).display(Notation::Standard, 0)), "42");
+```
+
+The illion names follow the Antimatter Dimensions scheme (`K`, `M`, `B`, `T`, `Qa`, `Qt`, `Sx`, `Sp`, `Oc`, `No`, `Dc`, `UDc`, ... `Ce`, ... `MI`). `break_eternity::notation::standard_abbreviation` and `letters_abbreviation` expose the suffix tables if you want to lay the mantissa out yourself.
+
 ### Saving and loading with `serde`
 
 Enable `features = ["serde"]`. The string form makes the save file human-readable and round-trips exactly.

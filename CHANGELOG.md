@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Notation` (`Scientific`, `Engineering`, `Standard`, `Letters`, `Logarithm`) with
+  `Decimal::to_notation(notation, places)` and the allocation-free `Decimal::display(..)`
+  adapter, plus `notation::standard_abbreviation` / `letters_abbreviation` for custom layouts.
+  Illion names follow the Antimatter Dimensions scheme; exponents past `1e9` print as `e` +
+  logarithm.
 - `no_std` support. The new `std` feature is on by default; disable it and enable `libm` to
   build for targets without a standard library (`alloc` is still required). The powers-of-ten
   table is now a static array instead of a lazily initialised `Vec`, which also removes an

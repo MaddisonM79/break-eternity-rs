@@ -36,6 +36,7 @@ mod format;
 #[cfg(feature = "godot4")]
 mod godot_impl;
 mod math;
+pub mod notation;
 mod parse;
 #[cfg(feature = "serde")]
 mod serde_impl;
@@ -55,6 +56,7 @@ pub use constants::{
 pub use decimal::Decimal;
 pub use error::{ArithmeticError, ArithmeticErrorKind, BreakEternityError};
 pub use format::{decimal_places, to_fixed};
+pub use notation::{Notation, NotationDisplay};
 pub use tetration::{InverseSearch, TetrationMode};
 pub use transcendental::LambertBranch;
 pub use utils::sign;
