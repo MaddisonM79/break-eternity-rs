@@ -52,7 +52,7 @@ break-eternity-rs = { version = "0.5", features = ["serde"] }
 |------|------|-------|
 | `std` (default) | Standard-library float math | Turn it off for `no_std`; see below. |
 | `libm` | Pure-Rust float math from [`libm`](https://crates.io/crates/libm) | Required when `std` is off. Ignored when `std` is on. |
-| `serde` | `Serialize` / `Deserialize` (string-based) | Round-trips through `Display` / `FromStr`. |
+| `serde` | `Serialize` / `Deserialize` | String in human-readable formats, `(sign, layer, mag)` in binary ones; `serde_components` / `serde_string` adapters. Works without `std`. |
 | `godot4` | `GodotConvert` / `FromGodot` / `ToGodot` for [`godot`](https://crates.io/crates/godot) | Godot 4 / gdext. Round-trip via `GString`. |
 | `wasm` | `JsDecimal` class via [`wasm-bindgen`](https://crates.io/crates/wasm-bindgen) | Exposes `Decimal` to JavaScript with a `break_eternity.js`-like method surface. |
 
@@ -359,7 +359,7 @@ The illion names follow the Antimatter Dimensions scheme (`K`, `M`, `B`, `T`, `Q
 
 ### Saving and loading with `serde`
 
-Enable `features = ["serde"]`. The string form makes the save file human-readable and round-trips exactly.
+Enable `features = ["serde"]`. Human-readable formats (JSON, TOML, RON, ...) get the `Display` string, which keeps the save file readable and round-trips exactly; binary formats (bincode, postcard, ...) get the raw `(sign, layer, mag)` components, 17 bytes in bincode with no parsing on load. JSON input is lenient: `"1e100"`, `100`, and `[1, 1, 100.0]` all load. Pin a field to one form with `#[serde(with = "break_eternity::serde_components")]` or `"break_eternity::serde_string"`.
 
 ```rust,ignore
 use break_eternity::Decimal;

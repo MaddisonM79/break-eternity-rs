@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (exact; `ArithmeticErrorKind::NotInteger` / `Overflow`), and `to_i32/u32/i64/u64/i128/u128/usize_saturating`.
 - `ArithmeticErrorKind` is now `#[non_exhaustive]` with two new variants, `Overflow` and
   `NotInteger`.
+- `serde`: binary formats now get the `(sign, layer, mag)` components instead of a string
+  (17 bytes in bincode, no parsing on load); human-readable formats keep the string.
+  Deserializing from JSON also accepts plain numbers and `[sign, layer, mag]` arrays, and
+  parse errors name the offending input. `serde_components` and `serde_string` are
+  `#[serde(with)]` adapters that pin one representation. Infinity in component form is
+  `(±1, i64::MAX, 0.0)` so JSON can carry it.
 - `JsDecimal` gained `toNotation`, `roundToPlaces`, `roundToSignificant`, and `isInteger`.
 - `no_std` support. The new `std` feature is on by default; disable it and enable `libm` to
   build for targets without a standard library (`alloc` is still required). The powers-of-ten

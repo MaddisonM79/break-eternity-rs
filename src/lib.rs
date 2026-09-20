@@ -59,6 +59,8 @@ pub use decimal::Decimal;
 pub use error::{ArithmeticError, ArithmeticErrorKind, BreakEternityError};
 pub use format::{decimal_places, to_fixed};
 pub use notation::{Notation, NotationDisplay};
+#[cfg(feature = "serde")]
+pub use serde_impl::{components as serde_components, string as serde_string};
 pub use tetration::{InverseSearch, TetrationMode};
 pub use transcendental::LambertBranch;
 pub use utils::sign;
