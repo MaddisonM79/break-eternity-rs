@@ -14,14 +14,18 @@
 //! are [`Undefined`](crate::ArithmeticErrorKind::Undefined). Every other combination follows the usual
 //! extended-real rules.
 
-use std::iter::{Product, Sum};
-use std::ops::{
+use core::iter::{Product, Sum};
+use core::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
 use crate::constants::MAX_FLOAT_PRECISION;
 use crate::decimal::Decimal;
 use crate::error::ArithmeticError;
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+// shadowed by std's inherent methods whenever std is in the crate graph
+use crate::math::FloatExt;
 use crate::utils::sign;
 
 // ---------------------------------------------------------------------------
@@ -632,12 +636,12 @@ macro_rules! impl_ops_primitive {
             }
         }
         impl PartialOrd<$prim_type> for Decimal {
-            fn partial_cmp(&self, other: &$prim_type) -> Option<std::cmp::Ordering> {
+            fn partial_cmp(&self, other: &$prim_type) -> Option<core::cmp::Ordering> {
                 $try_convert(*other).map(|d: Decimal| self.cmp(&d))
             }
         }
         impl PartialOrd<Decimal> for $prim_type {
-            fn partial_cmp(&self, other: &Decimal) -> Option<std::cmp::Ordering> {
+            fn partial_cmp(&self, other: &Decimal) -> Option<core::cmp::Ordering> {
                 $try_convert(*self).map(|d: Decimal| d.cmp(other))
             }
         }

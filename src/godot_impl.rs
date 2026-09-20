@@ -1,7 +1,7 @@
 //! Godot 4 bindings via the `godot` crate (gdext).
 //!
 //! `Decimal` is exposed to `GDScript` as a `String` (round-tripping through
-//! [`Display`](std::fmt::Display) + [`TryFrom<&str>`](crate::Decimal)). For
+//! [`Display`](core::fmt::Display) + [`TryFrom<&str>`](crate::Decimal)). For
 //! tighter integration, downstream authors can wrap `Decimal` in a
 //! `GodotClass`.
 //!

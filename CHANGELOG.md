@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `no_std` support. The new `std` feature is on by default; disable it and enable `libm` to
+  build for targets without a standard library (`alloc` is still required). The powers-of-ten
+  table is now a static array instead of a lazily initialised `Vec`, which also removes an
+  atomic load from `to_number()` on the layer-0 fast path.
+
 ## [0.5.0] - 2026-09-20
 
 A correctness release. Everything below was found by an audit of the 0.4.0 surface against

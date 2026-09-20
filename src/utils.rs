@@ -1,5 +1,10 @@
 //! Internal utility functions shared across modules.
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+// shadowed by std's inherent methods whenever std is in the crate graph
+use crate::math::FloatExt;
+
 /// Returns the sign of a float as i8: 1 for positive, -1 for negative, 0 for zero/NaN.
 ///
 /// This differs from [`f64::signum`] in that it returns 0 for 0.0 and NaN.

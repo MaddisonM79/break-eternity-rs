@@ -1,13 +1,17 @@
 //! Core [`Decimal`] struct definition, constructors, normalization, accessors,
 //! rounding, and comparison.
 
-use std::cmp::Ordering;
+use core::cmp::Ordering;
 
 use crate::constants::{
     power_of_10, EXPONENT_LIMIT, FIRST_NEG_LAYER, INFINITE_LAYER, LAYER_REDUCTION_THRESHOLD,
     MAX_SAFE_LAYER,
 };
 use crate::error::ArithmeticError;
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+// shadowed by std's inherent methods whenever std is in the crate graph
+use crate::math::FloatExt;
 use crate::utils::{f_maglog10, sign};
 
 /// A Decimal number that can represent numbers as large as 10^^1e308 and as 'small' as 10^-(10^^1e308).
@@ -698,8 +702,8 @@ impl PartialEq for Decimal {
 
 impl Eq for Decimal {}
 
-impl std::hash::Hash for Decimal {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl core::hash::Hash for Decimal {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.sign.hash(state);
         self.layer.hash(state);
         self.mag.to_bits().hash(state);
@@ -760,6 +764,7 @@ impl TryFrom<f32> for Decimal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
 
     #[test]
     fn normalize_canonicalizes_neg_zero() {

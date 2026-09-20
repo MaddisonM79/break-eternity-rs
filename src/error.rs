@@ -1,6 +1,7 @@
 //! Error types for the crate.
 
-use std::num::ParseFloatError;
+use alloc::string::String;
+use core::num::ParseFloatError;
 
 /// Identifies the category of an arithmetic error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

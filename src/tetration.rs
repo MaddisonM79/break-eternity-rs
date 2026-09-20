@@ -12,6 +12,10 @@ use crate::constants::{
 use crate::critical_section::{slog_critical, tetrate_critical};
 use crate::decimal::Decimal;
 use crate::error::ArithmeticError;
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+// shadowed by std's inherent methods whenever std is in the crate graph
+use crate::math::FloatExt;
 use crate::transcendental::LambertBranch;
 
 /// Algorithm choice for the fractional-height path of tetration and its
@@ -36,7 +40,7 @@ pub enum TetrationMode {
 const CONVERGENCE_HOTFIX: f64 = 1.444_667_861_009_099;
 
 fn e() -> Decimal {
-    Decimal::from_finite(std::f64::consts::E)
+    Decimal::from_finite(core::f64::consts::E)
 }
 
 impl Decimal {
@@ -134,9 +138,9 @@ impl Decimal {
                     upper = e();
                 }
                 return match payload.cmp(&upper) {
-                    std::cmp::Ordering::Equal => upper,
-                    std::cmp::Ordering::Less => lower,
-                    std::cmp::Ordering::Greater => Decimal::inf(),
+                    core::cmp::Ordering::Equal => upper,
+                    core::cmp::Ordering::Less => lower,
+                    core::cmp::Ordering::Greater => Decimal::inf(),
                 };
             } else if this_num > TETRATION_CONVERGENCE_MAX {
                 return Decimal::inf();
@@ -698,7 +702,7 @@ impl Decimal {
         // Infinite-degree super-root is x^(1/x) for 1/e <= x <= e, undefined otherwise.
         if degree == f64::INFINITY {
             let this_num = self.to_number();
-            if this_num < std::f64::consts::E && this_num > crate::constants::EXPN1 {
+            if this_num < core::f64::consts::E && this_num > crate::constants::EXPN1 {
                 return self.pow_raw(self.recip_raw());
             }
             return Decimal::nan_sentinel();
@@ -1810,7 +1814,7 @@ mod tests {
 
     #[test]
     fn infinite_height_fixed_points() {
-        let sqrt2 = Decimal::from_finite(std::f64::consts::SQRT_2);
+        let sqrt2 = Decimal::from_finite(core::f64::consts::SQRT_2);
         let t = sqrt2.tetrate(Some(f64::INFINITY), None, TetrationMode::Analytic);
         assert!(t.approx_eq(&Decimal::two(), 1e-9), "{t}");
         // Above the upper fixed point (4) the tower diverges.

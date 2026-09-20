@@ -1,3 +1,4 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 #![warn(missing_docs)]
 #![warn(clippy::pedantic)]
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -19,6 +20,13 @@
 #![crate_name = "break_eternity"]
 #![doc = include_str!("../README.md")]
 
+#[cfg(not(any(feature = "std", feature = "libm")))]
+compile_error!("break-eternity-rs needs either the `std` feature (default) or the `libm` feature");
+
+extern crate alloc;
+#[cfg(test)]
+extern crate std;
+
 mod arithmetic;
 mod constants;
 mod critical_section;
@@ -27,6 +35,7 @@ mod error;
 mod format;
 #[cfg(feature = "godot4")]
 mod godot_impl;
+mod math;
 mod parse;
 #[cfg(feature = "serde")]
 mod serde_impl;

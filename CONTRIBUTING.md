@@ -29,7 +29,8 @@ Open an issue prefixed with `feat:` and describe:
 cargo fmt --all
 cargo clippy --features serde,wasm --all-targets -- -D warnings
 cargo test --features serde
-cargo build --no-default-features
+cargo build --no-default-features --features libm
+cargo test --no-default-features --features libm --lib
 ```
 
 The `godot4` feature needs `libclang` for the gdext build script; CI builds it on Linux, so you only need it locally if you touch `src/godot_impl.rs`:

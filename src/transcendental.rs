@@ -10,6 +10,10 @@
 use crate::constants::{LAMBERTW_TOLERANCE, OMEGA};
 use crate::decimal::Decimal;
 use crate::error::ArithmeticError;
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+// shadowed by std's inherent methods whenever std is in the crate graph
+use crate::math::FloatExt;
 use crate::utils::sign;
 
 /// Which real branch of the Lambert W function to evaluate.
@@ -317,7 +321,7 @@ impl Decimal {
             return Decimal::from_components(
                 sign(self.mag),
                 0,
-                self.mag.abs() * std::f64::consts::LOG2_10,
+                self.mag.abs() * core::f64::consts::LOG2_10,
             );
         }
         if self.layer == 2 {
@@ -363,7 +367,7 @@ impl Decimal {
             return Decimal::from_components(
                 sign(self.mag),
                 0,
-                self.mag.abs() * std::f64::consts::LN_10,
+                self.mag.abs() * core::f64::consts::LN_10,
             );
         }
         if self.layer == 2 {
@@ -410,9 +414,9 @@ impl Decimal {
         // 0^b: 1 for b == 0, 0 for b > 0, infinite for b < 0.
         if a.sign == 0 {
             return match b.sign.cmp(&0) {
-                std::cmp::Ordering::Equal => Decimal::one(),
-                std::cmp::Ordering::Less => Decimal::inf(),
-                std::cmp::Ordering::Greater => Decimal::zero(),
+                core::cmp::Ordering::Equal => Decimal::one(),
+                core::cmp::Ordering::Less => Decimal::inf(),
+                core::cmp::Ordering::Greater => Decimal::zero(),
             };
         }
         // 1^b == 1
@@ -592,7 +596,7 @@ impl Decimal {
             return Decimal::from_components(
                 1,
                 1,
-                self.sign as f64 * std::f64::consts::LOG10_E * self.mag,
+                self.sign as f64 * core::f64::consts::LOG10_E * self.mag,
             );
         }
 
@@ -600,7 +604,7 @@ impl Decimal {
             return Decimal::from_components(
                 1,
                 2,
-                self.sign as f64 * (std::f64::consts::LOG10_E.log10() + self.mag),
+                self.sign as f64 * (core::f64::consts::LOG10_E.log10() + self.mag),
             );
         }
 
@@ -631,7 +635,7 @@ impl Decimal {
                 return Decimal::from_components(
                     1,
                     2,
-                    self.mag.log10() - std::f64::consts::LOG10_2,
+                    self.mag.log10() - core::f64::consts::LOG10_2,
                 );
             }
             return Decimal::from_components(1, 1, self.mag / 2.0);

@@ -1,9 +1,15 @@
 //! Display, formatting, and string-conversion impls for [`Decimal`].
 
-use std::fmt::{Display, LowerExp, UpperExp};
+use alloc::format;
+use alloc::string::{String, ToString};
+use core::fmt::{Display, LowerExp, UpperExp};
 
 use crate::constants::MAX_ES_IN_A_ROW;
 use crate::decimal::Decimal;
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+// shadowed by std's inherent methods whenever std is in the crate graph
+use crate::math::FloatExt;
 
 /// JavaScript's `toFixed`/`toPrecision` refuse more than 100 digits; we clamp instead.
 const MAX_PLACES: usize = 100;
@@ -145,11 +151,11 @@ impl Decimal {
 }
 
 // ---------------------------------------------------------------------------
-// std::fmt trait impls
+// core::fmt trait impls
 // ---------------------------------------------------------------------------
 
 impl LowerExp for Decimal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if let Some(s) = special(self) {
             return write!(f, "{s}");
         }
@@ -168,7 +174,7 @@ impl LowerExp for Decimal {
 }
 
 impl UpperExp for Decimal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if let Some(s) = special(self) {
             return write!(f, "{s}");
         }
@@ -187,7 +193,7 @@ impl UpperExp for Decimal {
 }
 
 impl Display for Decimal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if let Some(s) = special(self) {
             return write!(f, "{s}");
         }

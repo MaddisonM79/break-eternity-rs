@@ -1,27 +1,32 @@
 //! String parsing for [`Decimal`].
 //!
 //! Provides equivalent entry points: [`Decimal::from_string`], [`Decimal::from_string_with_mode`],
-//! the [`TryFrom<&str>`] impl, and the [`std::str::FromStr`] impl. Together these port
+//! the [`TryFrom<&str>`] impl, and the [`core::str::FromStr`] impl. Together these port
 //! `fromString` from `break_eternity.js` 2.1.3.
 //!
 //! The parser never panics. Malformed input returns [`BreakEternityError::ParseError`];
 //! syntactically valid input whose value is mathematically undefined (for example
 //! `"(-2)^^2.5"`) returns [`BreakEternityError::ParseUndefined`].
 
-use std::convert::TryFrom;
-use std::str::FromStr;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::convert::TryFrom;
+use core::str::FromStr;
 
-use crate::constants::commas_are_decimal_points;
-use crate::constants::ignore_commas;
+use crate::constants::{COMMAS_ARE_DECIMAL_POINTS, IGNORE_COMMAS};
 use crate::decimal::Decimal;
 use crate::error::BreakEternityError;
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+// shadowed by std's inherent methods whenever std is in the crate graph
+use crate::math::FloatExt;
 use crate::tetration::TetrationMode;
 use crate::utils::{f_maglog10, sign};
 
 impl Decimal {
     /// Parses a string into a [`Decimal`].
     ///
-    /// Accepts the formats produced by [`Decimal`]'s [`Display`](std::fmt::Display) impl as
+    /// Accepts the formats produced by [`Decimal`]'s [`Display`](core::fmt::Display) impl as
     /// well as the additional notations recognized by `break_eternity.js`:
     ///
     /// * Plain decimals: `"0"`, `"-5"`, `"3.14"`, `"1,000,000"` (commas are ignored)
@@ -30,7 +35,7 @@ impl Decimal {
     /// * Stacked exponents: `"eN"` (`10^N`), `"eeN"`, `"eeeN"`, …, and `"MeXeY"` (`M·10^(XeY)`)
     /// * Power / tetrate / pentate operators: `"X^Y"`, `"X^^N"`, `"X^^N;P"` (payload),
     ///   `"X^^^N"`, `"X^^^N;P"`
-    /// * Parenthesized large layer: `"(e^N)M"` (the [`Display`](std::fmt::Display) form for very
+    /// * Parenthesized large layer: `"(e^N)M"` (the [`Display`](core::fmt::Display) form for very
     ///   high layers; negative or fractional `N` is interpreted as `10^^N` with payload `M`)
     /// * Base-10 tetrate shorthands: `"N PT M"`, `"N PT (M)"`, `"NpM"`, and `"MfN"` / `"fN"`
     /// * Specials: `"Infinity"`, `"-Infinity"`. `"NaN"` returns an error since NaN is not a
@@ -160,9 +165,9 @@ fn tetrate_shorthand(
 
 fn parse(s: &str, mode: TetrationMode) -> Result<Decimal, BreakEternityError> {
     let mut value = s.trim().to_string();
-    if ignore_commas() {
+    if IGNORE_COMMAS {
         value = value.replace(',', "");
-    } else if commas_are_decimal_points() {
+    } else if COMMAS_ARE_DECIMAL_POINTS {
         value = value.replace(',', ".");
     }
     let value = value.to_lowercase();

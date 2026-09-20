@@ -5,7 +5,8 @@
 //!
 //! Enable with the `serde` Cargo feature.
 
-use std::convert::TryInto;
+use alloc::string::{String, ToString};
+use core::convert::TryInto;
 
 use crate::decimal::Decimal;
 use crate::error::BreakEternityError;

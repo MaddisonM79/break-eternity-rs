@@ -134,9 +134,27 @@ add it to `generate.mjs` and to `evaluate()` in `parity.rs`; add it to the table
 * The layer-0 fast paths (`powf`, native `%`, direct `f64` arithmetic) mean ordinary
   idle-game math never touches the log-domain code. Keep it that way: check `layer == 0` early.
 
-## 6. Non-goals (for now)
+## 6. `no_std`
 
-* `no_std`. The kernels only use `f64` methods, so it is mechanical (`libm` + `alloc` for
-  formatting), but nobody has asked.
+The crate is `#![no_std]` unless the `std` feature (default) is on, and always links `alloc`
+for `String` and `Vec`. The kernels only ever call `f64` methods, so `src/math.rs` supplies a
+`FloatExt` trait, backed by `libm`, with the same method names for everything `core` lacks
+(`ln`, `powf`, `floor`, the trig family, ...). Inherent methods win method resolution, so with
+`std` the trait is not even compiled and nothing changes; without it the same call sites
+resolve to `libm`. Two rules follow:
+
+* Use the method form (`x.ln()`), never `f64::ln(x)`, so the shim can catch it.
+* New modules that call float methods need the same two-line cfg'd import the others have.
+  A `cargo build --no-default-features --features libm` failure is the reminder.
+
+Inherent impls are visible from every crate in the graph, so as soon as anything links `std`
+(the test harness, a dev-dependency, `serde/std`) the inherent methods shadow the trait again
+and the import is reported unused; that is why it carries `#[allow(unused_imports)]`. It also
+means only a genuinely `std`-free target (CI builds `thumbv7em-none-eabihf`) proves the shim
+covers everything. `math.rs` tests the `libm` paths on the host through fully qualified calls
+against the `std` answers.
+
+## 7. Non-goals (for now)
+
 * NaN as a public value. Rust has `Result`; use it.
 * Layers above 9e15. See "Infinity".

@@ -41,7 +41,7 @@ break-eternity-rs = "0.5"
 
 ## Features
 
-All features are off by default. Enable them in `Cargo.toml`:
+Only `std` is on by default. Enable the others in `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -50,11 +50,27 @@ break-eternity-rs = { version = "0.5", features = ["serde"] }
 
 | Flag | Adds | Notes |
 |------|------|-------|
+| `std` (default) | Standard-library float math | Turn it off for `no_std`; see below. |
+| `libm` | Pure-Rust float math from [`libm`](https://crates.io/crates/libm) | Required when `std` is off. Ignored when `std` is on. |
 | `serde` | `Serialize` / `Deserialize` (string-based) | Round-trips through `Display` / `FromStr`. |
 | `godot4` | `GodotConvert` / `FromGodot` / `ToGodot` for [`godot`](https://crates.io/crates/godot) | Godot 4 / gdext. Round-trip via `GString`. |
 | `wasm` | `JsDecimal` class via [`wasm-bindgen`](https://crates.io/crates/wasm-bindgen) | Exposes `Decimal` to JavaScript with a `break_eternity.js`-like method surface. |
 
 Godot 3 (`gdnative`) support was removed in 0.5.0.
+
+### `no_std`
+
+The crate needs `alloc` (for parsing and formatting) but not `std`:
+
+```toml
+[dependencies]
+break-eternity-rs = { version = "0.5", default-features = false, features = ["libm"] }
+```
+
+Every operation is available and behaves identically; the only difference is that the
+transcendental functions come from `libm` instead of the platform's C library, so results can
+differ from a `std` build in the last bit. `serde` works without `std` too. `wasm` and `godot4`
+imply `std`.
 
 ## Creating a `Decimal`
 

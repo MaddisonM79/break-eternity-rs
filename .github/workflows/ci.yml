@@ -72,7 +72,7 @@ jobs:
       # the wasm32 target); they are exercised in their own dedicated jobs.
       # The core test matrix runs against the default + serde features only.
       - run: cargo test --features serde
-      - run: cargo build --no-default-features
+      - run: cargo test --no-default-features --features libm --lib
       - run: cargo build --examples
       - run: cargo run --example idle_loop
 
@@ -90,6 +90,19 @@ jobs:
       - name: Install libclang (required by gdext build script)
         run: sudo apt-get install -y libclang-dev
       - run: cargo build --all-features
+
+  no_std:
+    name: no_std (thumbv7em-none-eabihf)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: stable
+          targets: thumbv7em-none-eabihf
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo build --no-default-features --features libm --target thumbv7em-none-eabihf
+      - run: cargo build --no-default-features --features libm,serde --target thumbv7em-none-eabihf
 
   wasm:
     name: wasm32 build + test

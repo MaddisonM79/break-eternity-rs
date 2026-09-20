@@ -11,7 +11,11 @@
 //! interpolates the resulting height pair either linearly (when one endpoint
 //! is ≤ 0, as in the slog table) or geometrically.
 
-use std::f64::consts::E;
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+// shadowed by std's inherent methods whenever std is in the crate graph
+use crate::math::FloatExt;
+use core::f64::consts::E;
 
 #[allow(clippy::excessive_precision)]
 pub(crate) const CRITICAL_HEADERS: [f64; 10] = [2.0, E, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];

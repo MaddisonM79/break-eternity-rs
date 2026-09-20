@@ -13,6 +13,10 @@
 
 use crate::decimal::Decimal;
 use crate::error::ArithmeticError;
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+// shadowed by std's inherent methods whenever std is in the crate graph
+use crate::math::FloatExt;
 
 impl Decimal {
     /// Returns the sine of the Decimal. Returns `0` at layer ≥ 1; see the
