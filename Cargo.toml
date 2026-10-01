@@ -12,7 +12,7 @@ documentation = "https://docs.rs/break-eternity-rs"
 keywords = ["big", "decimal", "bigdecimal", "incremental", "games"]
 categories = ["game-development", "mathematics"]
 readme = "README.md"
-exclude = [".gitignore", ".vscode", ".github", "docs", "deny.toml"]
+exclude = [".gitignore", ".vscode", ".github", "docs", "deny.toml", "CLAUDE.md"]
 
 [package.metadata.docs.rs]
 all-features = true
